@@ -273,6 +273,30 @@ the system. Student ID entry remains a temporary record lookup, not identity
 verification.
 # Cloud migration local verification
 
+Node relay bench update: the user confirmed GPIO23 through a resistor and
+2N2222A to relay IN1, with a 5V coil module. Added serial ARM/TEST/OFF/STATUS/HELP;
+boot is OFF/disarmed, TEST requests one approximately 300ms pulse, cooldown is
+three seconds, and arming expires after 60 seconds. A separate timer task owns
+HIGH transitions and releases the output while the network loop is blocked.
+No cloud relay command path or fabricated PC power feedback was added.
+
+The actual RelayBench.h passed Windows host C++ tests with simulated GPIO,
+serial and ESP timers: boot/arming, pulse duration without loop polling,
+cooldown, OFF/cancel, expiry, timer failures, CRLF and oversized input. This is
+software validation, not a physical timing/contact test. The complete node
+compiled with one job for ESP32 DOIT DevKit V1, core 3.3.7 / ArduinoJson 7:
+963,594 bytes flash (73%), 49,724 bytes globals (15%). Node binary identity and
+pairing preflight are provided by Upload-Node.ps1/check-node-binary.js.
+
+The user identified COM3 as the PC-01 node. The initial upload was blocked by
+port access; after the user closed its serial application, esptool identified
+the known node MAC `b0:cb:d8:e9:91:8c`, wrote and hash-verified the firmware, and
+reset the node. A bounded read-only serial STATUS check returned
+`GPIO23: LOW (off); test: disarmed. PC power: unknown.` and repeated controller
+heartbeat acknowledgements. The serial port was then closed. No ARM or TEST
+command was sent by the agent; relay clicks, physical timing and contact
+continuity remain for the user to verify with the relay disconnected from the PC.
+
 Workstation-dialog fix: a focused create/save regression test reproduced both
 `TextEditingController was used after being disposed` and `_dependents.isEmpty`
 on the original form. `WorkstationEditorDialog` now owns its controllers, clears

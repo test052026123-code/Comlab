@@ -167,9 +167,10 @@ release a reservation or repeat a physical pulse based on a timeout alone.
 
 **Implemented in the updated firmware:** authenticated local Wi-Fi node
 heartbeats and forwarding of observed connectivity through the cloud controller.
-**Not implemented:** power sensing, relay GPIO execution, and persistent NVS
-command deduplication. Every received
-power command is rejected; no pin is changed. A future executor must persist
+The node also has a separate, locally armed [USB relay bench test](../firmware/RELAY_TEST.md).
+**Not implemented:** power sensing, cloud-command relay execution, and persistent
+NVS command deduplication. Every cloud power command is rejected; this protocol
+does not drive a relay. A future executor must persist
 command identity before any physical pulse, return stored results for duplicates,
 check expiry/feedback, and recover without repeating a pulse after reset.
 Those requirements are proposed hardware behavior, not an already-tested relay

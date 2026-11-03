@@ -1,8 +1,8 @@
 /*
- * ComLab workstation node: authenticated Wi-Fi heartbeat, version 1.
+ * ComLab workstation node: authenticated Wi-Fi + USB relay bench test.
  * ESP32-WROOM DevKit V1, Arduino ESP32 3.3.7, ArduinoJson 7.
- * This discovery stage never reads or drives relay GPIO. Disconnect PC power-
- * button wiring until relay polarity, supply and real power feedback are verified.
+ * Manual 300ms relay pulse on GPIO23 through the confirmed 2N2222A interface.
+ * Disconnect relay COM/NO from the PC while testing. No cloud relay executor.
  * Requires the updated comlab_cloud controller with the matching local node key.
  */
 #include <WiFi.h>
@@ -11,6 +11,7 @@
 #include <esp_system.h>
 #include <time.h>
 #include "NodeAuth.h"
+#include "RelayBench.h"
 #if __has_include("secrets.h")
 #include "secrets.h"
 #else
@@ -48,7 +49,7 @@ static void receiveAcknowledgements() {
     if (body["protocolVersion"] != 1 || body["nodeId"].as<String>() != COMLAB_NODE_ID ||
         body["bootId"].as<String>() != nodeBootId || body["ackSequence"].as<uint32_t>() != sequence) continue;
     lastAckMs = millis();
-    Serial.printf("[Node %s / %s] Controller acknowledged heartbeat. PC power: unknown. Relay control disabled.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID);
+    Serial.printf("[Node %s / %s] Controller acknowledged heartbeat. PC power: unknown. Automatic power control disabled.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID);
   }
 }
 
@@ -80,6 +81,7 @@ static void reportHeartbeat() {
 
 void setup() {
   Serial.begin(115200); delay(200);
+  RelayBench::begin();
   configured = strlen(COMLAB_NODE_WIFI_SSID) > 0 && nodeHex(String(COMLAB_NODE_KEY), 64) &&
     String(COMLAB_NODE_ID).length() > 0 && String(COMLAB_WORKSTATION_ID).length() > 0;
   if (!configured) {
@@ -93,10 +95,11 @@ void setup() {
   WiFi.begin(COMLAB_NODE_WIFI_SSID, COMLAB_NODE_WIFI_PASSWORD);
   nextWifiMs = millis() + 10000;
   configTime(0, 0, "pool.ntp.org", "time.google.com");
-  Serial.printf("[Node] Starting %s / %s. Waiting for Wi-Fi and synchronized time. Relay control disabled.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID);
+  Serial.printf("[Node] Starting %s / %s. Waiting for Wi-Fi and synchronized time. Manual relay bench test ready; automatic power control disabled.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID);
 }
 
 void loop() {
+  RelayBench::poll();
   if (!configured) { delay(100); return; }
   const uint32_t now = millis();
   if (WiFi.status() != WL_CONNECTED) {

@@ -7,8 +7,11 @@ app changes are implemented and locally tested. Render origin
 guard checks, and the signed-in tablet successfully fetched workstation status.
 The new [node discovery sketches](firmware/NODES_SETUP.md) add authenticated
 Wi-Fi heartbeats from separate PC nodes. They report real connectivity with
-unknown power and never activate a relay. Physical node discovery still needs
-an upload/test of both updated sketches. In cloud mode the ESP32 connects
+unknown power and do not execute cloud relay commands. The node now includes an
+opt-in [USB relay bench test](firmware/RELAY_TEST.md) for the confirmed 5V module
+and 2N2222A interface; it starts disarmed and requires ARM/TEST commands.
+The user has reported successful controller/node heartbeat acknowledgements.
+In cloud mode the ESP32 connects
 outbound over trusted HTTPS; a Windows server and Windows hosts-file mapping are
 unnecessary. Node discovery uses local mDNS between the ESP32 boards.
 The original LAN operating instructions below still apply to LAN mode.

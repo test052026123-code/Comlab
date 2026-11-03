@@ -1,7 +1,9 @@
 # Workstation node discovery firmware
 
 This version implements authenticated node heartbeats on the laboratory Wi-Fi.
-It does not execute relay commands or sense PC power. It never reports a PC OFF
+It does not execute cloud relay commands or sense PC power. The optional
+[USB relay bench test](RELAY_TEST.md) supports one manual pulse after arming,
+using the confirmed 5V module/2N2222A circuit. It never reports a PC OFF
 or ON based on a relay command or network reachability. Power, reachability and
 input remain unknown, and PCs remain ineligible for check-in.
 
@@ -93,7 +95,7 @@ must permit local communication; allow mDNS and local UDP 9090/9091.
 Expected node log:
 
 ```text
-[Node NODE-01 / PC-01] Controller acknowledged heartbeat. PC power: unknown. Relay control disabled.
+[Node NODE-01 / PC-01] Controller acknowledged heartbeat. PC power: unknown. Automatic power control disabled.
 ```
 
 Expected controller log after an actual node heartbeat:
@@ -144,7 +146,8 @@ hostname validation remain enabled.
 Confirm the relay coil voltage, input polarity, transistor pinout and interface
 wiring. Fit the required resistors and use isolated dry contacts across the
 motherboard PWR_SW pair. Disconnect relay/PC wiring during this discovery test:
-the node does not configure or drive GPIO23. Actual power sensing, relay pulse
-execution, persistent command deduplication and physical validation remain
+the node now holds GPIO23 LOW at boot for the confirmed transistor interface,
+and drives it only for the explicit USB bench test. Actual power sensing, cloud
+relay execution, persistent command deduplication and physical validation remain
 future work. There is no test mode that fabricates OFF/ON telemetry or unlocks
 workstation eligibility.
