@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // All operations go through the role-checked trusted API. Admin SDK uses
+    // IAM and bypasses these rules; see server validation and provisioning.
+    // No mobile client, including administrators, may mutate or enumerate PII.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

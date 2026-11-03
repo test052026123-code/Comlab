@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: comlab-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 24.15.0
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: CONTROLLER_TRANSPORT
+        value: cloud
+      - key: CONTROLLER_ID
+        value: LAB-CONTROLLER
+      - key: CONTROLLER_DEVICE_KEY_SHA256
+        sync: false
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/firebase-admin.json

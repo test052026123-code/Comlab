@@ -1,0 +1,20 @@
+{
+  "name": "comlab-trusted-api",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "provision": "node scripts/provision.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "firebase-admin": "^14.5.0",
+    "helmet": "^8.1.0",
+    "zod": "^4.1.0"
+  }
+}
