@@ -273,6 +273,16 @@ the system. Student ID entry remains a temporary record lookup, not identity
 verification.
 # Cloud migration local verification
 
+Windows low-memory recovery: the observed machine had approximately 500 MB free
+physical RAM and 797 MB free virtual memory when diagnosing repeated cc1plus
+allocation failures. Added `Build-Firmware.ps1` with `--jobs 1`, plus a prebuilt
+`Upload-Controller.ps1` path that skips compilation. Both target path checks
+passed. Prebuilt validation confirmed the node-receiver banners, current local
+Wi-Fi/cloud settings, all five peer keys, and required bootloader/partition
+binaries without printing secrets. No recovery upload was performed because
+the controller's current COM port had not been identified. The single-job
+helper was checked without launching another compiler under memory pressure.
+
 Node discovery update:
 
 - Added `firmware/comlab_node/comlab_node.ino` and the matching controller UDP

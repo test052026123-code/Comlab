@@ -18,6 +18,37 @@ board. No firmware has been uploaded automatically by these source changes.
 
 ## Local configuration
 
+### Windows compiler memory errors
+
+`cc1plus.exe: out of memory` is host compiler exhaustion, independent of the
+ESP32 flash/RAM usage reported after a successful build. Stop the Arduino IDE
+build and close unused applications before compiling again. The low-memory
+helper limits compilation to one job:
+
+```powershell
+.\server\scripts\Build-Firmware.ps1 -Target controller
+```
+
+Use `-Target node` for the workstation sketch. `-CheckOnly` validates the helper's
+paths without compiling. Logs and binaries stay in ignored `server/.local`;
+firmware binaries contain local credentials and must not be published.
+
+The already compiled controller can be uploaded without compiling again:
+
+```powershell
+.\server\scripts\Upload-Controller.ps1 -CheckOnly
+.\server\scripts\Upload-Controller.ps1 -ControllerPort COM5
+```
+
+Replace COM5 if the controller uses another port. Select the controller, not the
+node, and close Serial Monitor first. The helper checks that the binary contains
+the node receiver and matches current local controller/peer configuration before
+uploading at 115200 baud with verification. It does not detect arbitrary future
+source changes; rebuild after editing firmware. This bypasses compiler memory
+usage; it does not change system pagefile settings or terminate applications.
+
+### Per-node pairing
+
 PC-01 / NODE-01 has already been configured locally on this computer. Keep each
 sketch's existing ignored secret header alongside its source files. Never move
 Firebase Admin JSON into either sketch.
