@@ -27,6 +27,8 @@ class ApiFailure implements Exception {
 
 class CloudRepository implements LabRepository {
   static final http.Client sharedClient = http.Client();
+  // Render Free can take about a minute to resume after inactivity.
+  static const requestTimeout = Duration(seconds: 90);
   final String base;
   final Future<String?> Function() token;
   final http.Client client;
@@ -55,7 +57,7 @@ class CloudRepository implements LabRepository {
       });
     if (data != null) req.body = jsonEncode(data);
     try {
-      final r = await _send(client, req).timeout(const Duration(seconds: 20));
+      final r = await _send(client, req).timeout(requestTimeout);
       if (r.statusCode >= 300 && r.statusCode < 400) {
         final location = r.headers['location'];
         final destination = location == null ? null : Uri.tryParse(location);
@@ -93,7 +95,9 @@ class CloudRepository implements LabRepository {
       return r;
     } on TimeoutException {
       throw ApiFailure(
-        'Cloud request timed out. The result may be unknown; reconcile the saved operation.',
+        method == 'GET' || path == '/lookup'
+            ? 'The cloud server took too long to respond. It may be starting up. Wait a moment, then try again.'
+            : 'Cloud request timed out. The result may be unknown; reconcile the saved operation.',
       );
     } on http.ClientException {
       throw ApiFailure(

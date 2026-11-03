@@ -273,6 +273,23 @@ the system. Student ID entry remains a temporary record lookup, not identity
 verification.
 # Cloud migration local verification
 
+Render timeout update: live HTTPS process health returned 200 in approximately
+0.7 seconds during diagnosis, while user endpoints correctly required Firebase
+credentials. A refresh from the signed-in tablet then successfully reached the
+Firebase-backed workstation endpoint and reported the controller offline. That
+verifies the current approved kiosk/Firestore read path; it does not verify key
+rotation or ESP32 connectivity. The original timeout's exact cause was not
+captured in Render logs; Free service startup/redeployment is a possible cause.
+
+Cloud HTTP deadline is now 90 seconds instead of 20. Student lookup/read timeouts
+offer retry instructions, while write timeouts retain uncertainty/reconciliation.
+No request is automatically resent. All 29 Flutter tests passed, including a
+simulated 60-second read, lookup timeout, and no duplicate reservation after a
+timeout; analyzer found no issues.
+APK build 12 compiled, installed over the existing tablet app using `adb install
+-r`, and launched successfully. Android reports versionCode 12. No account
+password, Firestore mutation, or hardware command was supplied during diagnosis.
+
 Fixed-origin update: the app uses `https://comlab-api.onrender.com` through an
 immutable source constant. Legacy saved tunnel origins are ignored; sign-in and
 settings have no API address input. All 26 Flutter tests passed, including fresh

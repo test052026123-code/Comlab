@@ -10,8 +10,8 @@ outbound over trusted HTTPS; the Windows server and LAN DNS are unnecessary.
 The original LAN operating instructions below still apply to LAN mode.
 
 Android tablet laboratory-management prototype. Package: `com.comlab.kiosk`.
-Current debug APK: [ComLab-Cloud-build11.apk](build/app/outputs/flutter-apk/ComLab-Cloud-build11.apk)
-(version 1.0.0, build 11, configured for your ComLab Firebase Android registration).
+Current debug APK: [ComLab-Cloud-build12.apk](build/app/outputs/flutter-apk/ComLab-Cloud-build12.apk)
+(version 1.0.0, build 12, configured for your ComLab Firebase Android registration).
 Minimum Android 7 / API 24. Install over the earlier setup-only build to retain
 settings. Firebase values are in the ignored local `config/firebase.json`;
 server credentials are never included in the app.
@@ -32,6 +32,9 @@ in `LabState.trustedApiUrl`; sign-in and settings have no address-entry field.
 Older saved tunnel addresses are ignored on upgrade. HTTPS trust checks and
 Firebase account approval are still required. Changing the origin requires
 editing that source constant and rebuilding the APK.
+Cloud requests allow up to 90 seconds for Render Free startup. Read-only requests
+and student lookup timeouts offer a safe retry; uncertain writes retain the saved
+operation and reconciliation instructions. Requests are never automatically resent.
 This is an independent project in `C:\Users\clima\Desktop\ComLab`; it does not
 use eSURSECO's Firebase project, `.env`, API, or deployment configuration.
 
