@@ -282,7 +282,14 @@ verification.
   check performed no Firestore writes or hardware commands.
 - Connection-test firmware compiled for ESP32-WROOM DOIT DevKit V1 with Arduino
   ESP32 3.3.7 / ArduinoJson 7.4.3: 1,117,693 bytes flash, 48,420 bytes globals.
-- Not verified: actual Render deployment, approved-user access through Render,
-  uploaded cloud firmware, physical PC node telemetry, relay execution.
+- Deployed `https://comlab-api.onrender.com`: normal HTTPS trust passed;
+  `/healthz` returned 200, `/health` and `/controller/status` returned 401 without
+  Firebase credentials, and `/v1/controller/sync` returned 401 without device
+  credentials. These checks did not authenticate to Firebase or send hardware work.
+- The protected device credential was accepted by Render: an authenticated,
+  deliberately invalid sync body reached schema validation (400), without
+  Firestore writes or command delivery. This does not verify Firebase credentials.
+- Not verified: approved-user/Firebase access through Render, uploaded cloud
+  firmware, physical PC node telemetry, relay execution.
 - Cloud-compatible debug APK build 10 was built successfully. It has not been
   installed on the tablet during this migration; settings are not changed.

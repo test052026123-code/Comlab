@@ -2,8 +2,9 @@
 
 Cloud migration: [Render setup](server/RENDER_SETUP.md) and
 [outbound ESP32 protocol](docs/CLOUD_CONTROLLER_API.md). Cloud-mode server and
-app changes are implemented and locally tested. Deployment is pending; no Render
-URL has been verified. The new ESP32 sketch is connection-test firmware only,
+app changes are implemented and locally tested. Render origin
+`https://comlab-api.onrender.com` passed HTTPS process-health and authentication-
+guard checks; approved-user/Firebase access still needs verification. The new ESP32 sketch is connection-test firmware only,
 reports zero nodes and never powers a PC. In cloud mode the ESP32 connects
 outbound over trusted HTTPS; the Windows server and LAN DNS are unnecessary.
 The original LAN operating instructions below still apply to LAN mode.

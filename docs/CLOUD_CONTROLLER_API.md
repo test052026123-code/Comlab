@@ -2,8 +2,9 @@
 
 Source: `server/src/cloud-controller.js`, `server/src/device-auth.js`,
 `server/src/index.js`, `firmware/comlab_cloud/comlab_cloud.ino`.
-This is an implemented local protocol, not a deployed or hardware-verified
-service. The existing LAN protocol remains in `CONTROLLER_API.md`.
+The deployed origin passed process-health and unauthenticated guard checks;
+approved-user/Firebase access and physical hardware remain unverified. The
+existing LAN protocol remains in `CONTROLLER_API.md`.
 
 Cloud mode: tablet -> HTTPS Node API -> Firestore queue <- ESP32 outbound HTTPS.
 The tablet never submits cloud commands directly to the controller. The server

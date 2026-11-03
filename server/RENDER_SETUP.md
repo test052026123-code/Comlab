@@ -1,7 +1,9 @@
 # Render deployment
 
-Status: cloud-mode source and local checks are complete. No Render service or
-deployed URL has been verified yet. The ESP32 sketch is a connection test only;
+Status: cloud-mode source and local checks are complete. The deployed origin
+`https://comlab-api.onrender.com` passed HTTPS `/healthz` (200) and unauthenticated
+user/device endpoint guards (401). Approved-user/Firebase access and hardware
+connection are not yet verified. The ESP32 sketch is a connection test only;
 it reports zero nodes and never changes GPIO or powers a PC.
 
 ## Create the service
@@ -49,7 +51,8 @@ Cloud mode does not use `CONTROLLER_URL` or `CONTROLLER_TOKEN`.
 
 Deploy after adding both secrets. If the Blueprint's first attempt starts before
 the secret file exists, add the file and redeploy. Copy the **actual HTTPS service
-origin from Render**. No hostname in this document is a deployed service URL.
+origin from Render**. The verified current origin is recorded at the top of this
+document; placeholder arguments below must be replaced with that actual origin.
 
 ## Verify and connect
 
