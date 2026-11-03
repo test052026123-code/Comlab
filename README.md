@@ -4,9 +4,13 @@ Cloud migration: [Render setup](server/RENDER_SETUP.md) and
 [outbound ESP32 protocol](docs/CLOUD_CONTROLLER_API.md). Cloud-mode server and
 app changes are implemented and locally tested. Render origin
 `https://comlab-api.onrender.com` passed HTTPS process-health and authentication-
-guard checks; approved-user/Firebase access still needs verification. The new ESP32 sketch is connection-test firmware only,
-reports zero nodes and never powers a PC. In cloud mode the ESP32 connects
-outbound over trusted HTTPS; the Windows server and LAN DNS are unnecessary.
+guard checks, and the signed-in tablet successfully fetched workstation status.
+The new [node discovery sketches](firmware/NODES_SETUP.md) add authenticated
+Wi-Fi heartbeats from separate PC nodes. They report real connectivity with
+unknown power and never activate a relay. Physical node discovery still needs
+an upload/test of both updated sketches. In cloud mode the ESP32 connects
+outbound over trusted HTTPS; a Windows server and Windows hosts-file mapping are
+unnecessary. Node discovery uses local mDNS between the ESP32 boards.
 The original LAN operating instructions below still apply to LAN mode.
 
 Android tablet laboratory-management prototype. Package: `com.comlab.kiosk`.

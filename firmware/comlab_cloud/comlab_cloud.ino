@@ -1,5 +1,5 @@
 /*
- * ComLab ESP32-WROOM DevKit V1 - outbound cloud connection test.
+ * ComLab ESP32-WROOM DevKit V1 - outbound cloud + signed node discovery.
  * Arduino ESP32 core 3.3.7; ArduinoJson 7.
  * No GPIO, relay execution, fabricated nodes or Firebase Admin credentials.
  * HTTPS validates hostname and the SDK's public CA certificate bundle.
@@ -10,6 +10,7 @@
 #include <esp_crt_bundle.h>
 #include <esp_system.h>
 #include <time.h>
+#include "NodeReceiver.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -17,13 +18,14 @@
 #include "secrets.example.h"
 #endif
 
-static const char* FIRMWARE_VERSION = "comlab-cloud-connection-test-1";
+static const char* FIRMWARE_VERSION = "comlab-cloud-node-discovery-2";
 static const uint32_t SYNC_INTERVAL_MS = 5000;
 static const uint32_t MAX_BACKOFF_MS = 30000;
 static String bootId, pendingPayload;
 static uint32_t sequence = 1, nextSyncMs = 0, nextWifiMs = 0, backoffMs = SYNC_INTERVAL_MS;
 static bool configured = false;
 static JsonDocument resultOutbox;
+static size_t reportedNodeCount = 0;
 
 struct ResponseBuffer { String text; bool tooLarge = false; };
 
@@ -45,8 +47,8 @@ static String newBootId() {
   return String(value);
 }
 
-static String utcNow() {
-  time_t epoch = time(nullptr); struct tm utc; gmtime_r(&epoch, &utc);
+static String utcAt(time_t epoch) {
+  struct tm utc; gmtime_r(&epoch, &utc);
   char value[25]; strftime(value, sizeof(value), "%Y-%m-%dT%H:%M:%SZ", &utc);
   return String(value);
 }
@@ -76,10 +78,15 @@ static void rejectCommands(JsonArrayConst commands) {
 static void buildPayload() {
   JsonDocument body;
   body["protocolVersion"] = 1; body["bootId"] = bootId;
-  body["sequence"] = sequence; body["sampledAt"] = utcNow();
+  body["sequence"] = sequence;
   body["uptimeMs"] = millis(); body["firmwareVersion"] = FIRMWARE_VERSION;
   body["capabilities"].to<JsonArray>();
-  body["nodes"].to<JsonArray>(); // No real workstation sensors are implemented yet.
+  int64_t oldestSampleMs;
+  JsonArray nodes = body["nodes"].to<JsonArray>();
+  addNodeObservations(nodes, oldestSampleMs);
+  reportedNodeCount = nodes.size();
+  // Preserve the oldest live observation, rather than making cached data fresh.
+  body["sampledAt"] = utcAt(static_cast<time_t>(oldestSampleMs / 1000));
   JsonArray results = body["results"].to<JsonArray>();
   for (JsonObjectConst result : resultOutbox.as<JsonArrayConst>()) {
     if (results.size() >= 5) break;
@@ -132,7 +139,7 @@ static bool syncWithCloud() {
   }
   rejectCommands(body["commands"].as<JsonArrayConst>());
   ++sequence; pendingPayload.clear();
-  Serial.println("[Cloud] Authenticated HTTPS sync acknowledged; 0 workstation nodes reported.");
+  Serial.printf("[Cloud] Authenticated HTTPS sync acknowledged; %u observed workstation nodes reported. Power control disabled.\n", static_cast<unsigned>(reportedNodeCount));
   return true;
 }
 
@@ -151,12 +158,14 @@ void setup() {
   bootId = newBootId();
   WiFi.mode(WIFI_STA); WiFi.setHostname("comlab-controller"); WiFi.setAutoReconnect(true);
   WiFi.begin(COMLAB_WIFI_SSID, COMLAB_WIFI_PASSWORD);
+  nextWifiMs = millis() + 10000;
   configTime(0, 0, "pool.ntp.org", "time.google.com");
-  Serial.println("ComLab outbound HTTPS connection test. Waiting for Wi-Fi and synchronized time.");
+  Serial.println("ComLab outbound HTTPS + authenticated node discovery. Waiting for Wi-Fi and synchronized time.");
 }
 
 void loop() {
   if (!configured) { delay(100); return; }
+  pollNodeHeartbeats();
   const uint32_t now = millis();
   if (WiFi.status() != WL_CONNECTED) {
     if (static_cast<int32_t>(now - nextWifiMs) >= 0) { WiFi.reconnect(); nextWifiMs = now + 10000; }
@@ -165,6 +174,7 @@ void loop() {
   // Certificate verification is never bypassed, including before the clock syncs.
   if (time(nullptr) < 1700000000) { delay(20); return; }
   if (static_cast<int32_t>(now - nextSyncMs) >= 0) {
+    pollNodeHeartbeats();
     if (syncWithCloud()) backoffMs = SYNC_INTERVAL_MS;
     else backoffMs = min(backoffMs * 2, MAX_BACKOFF_MS);
     nextSyncMs = millis() + backoffMs + (esp_random() % 250);

@@ -30,6 +30,8 @@ server/.env
 server/.local/
 config/firebase.json
 **/secrets.h
+**/node_secrets.h
+**/node-pairing.json
 **/*firebase-adminsdk*.json
 **/firebase-admin.json
 **/controller-cloud.json

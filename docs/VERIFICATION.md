@@ -273,6 +273,27 @@ the system. Student ID entry remains a temporary record lookup, not identity
 verification.
 # Cloud migration local verification
 
+Node discovery update:
+
+- Added `firmware/comlab_node/comlab_node.ino` and the matching controller UDP
+  receiver. Both use separate per-node HMAC keys, signed acknowledgements,
+  identity/sequence/time checks and real heartbeat freshness. No GPIO is read
+  or driven; power/reachability/input stay unknown.
+- Node compiled for DOIT ESP32 DEVKIT V1 / ESP32 core 3.3.7 / ArduinoJson 7.4.3:
+  956,934 bytes flash (73%), 49,644 bytes globals.
+- Updated controller compiled: 1,166,401 bytes flash (88%), 51,492 bytes globals.
+- 29 server tests passed, including discovery-only nodes remaining ineligible
+  and failing reservation while power is unknown.
+- Local configuration checks verified matching protocol headers, all five
+  per-node pairings, PC-01 configuration, exclusion of the Render device key
+  from node configuration, and the example UDP envelope fitting 1024 bytes.
+- The user reported authenticated Render acknowledgements from the earlier
+  controller connection-test firmware. This updated controller/node pair has
+  not been flashed or physically tested by the agent. No claim of on-device
+  HMAC interoperability, real node reception, sensing, or relay control is made.
+- See `firmware/NODES_SETUP.md` for exact upload order and limitations. The
+  tablet APK is unchanged by this firmware update.
+
 Render timeout update: live HTTPS process health returned 200 in approximately
 0.7 seconds during diagnosis, while user endpoints correctly required Firebase
 credentials. A refresh from the signed-in tablet then successfully reached the

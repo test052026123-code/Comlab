@@ -134,3 +134,16 @@ test('conflicting same-sequence requests cannot refresh or replace status', asyn
   await assert.rejects(controller.sync(body(1,{nodes:[]})),/sequence/);
   assert.equal(db.docs.get(`controllerSnapshots/${controllerId}`).nodes.length,1);
 });
+
+test('discovery-only connected nodes stay unavailable while power is unknown', async () => {
+  const {controller,body,lab,reserve,db}=fixture();
+  const report=body(1,{capabilities:[],nodes:body().nodes.map(n=>({...n,power:'unknown',reachability:'unknown',input:'unknown'}))});
+  const reply=await controller.sync(report);
+  assert.deepEqual(reply.commands,[]);
+  const pc=(await lab.workstations()).workstations[0];
+  assert.equal(pc.node.connectivity,'connected');
+  assert.equal(pc.node.power,'unknown');
+  assert.equal(pc.eligible,false);
+  await assert.rejects(reserve(randomUUID()));
+  assert.equal([...db.docs.keys()].some(k=>k.startsWith('sessions/')),false);
+});

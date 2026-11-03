@@ -3,8 +3,10 @@
 Status: cloud-mode source and local checks are complete. The deployed origin
 `https://comlab-api.onrender.com` passed HTTPS `/healthz` (200) and unauthenticated
 user/device endpoint guards (401). Approved-user/Firebase access and hardware
-connection are not yet verified. The ESP32 sketch is a connection test only;
-it reports zero nodes and never changes GPIO or powers a PC.
+connection are not yet verified by this deployment procedure. The updated
+[node discovery firmware](../firmware/NODES_SETUP.md) can forward signed local
+node heartbeats, but it never changes GPIO or powers a PC. Node power stays
+unknown until feedback hardware and command execution are implemented.
 
 ## Create the service
 

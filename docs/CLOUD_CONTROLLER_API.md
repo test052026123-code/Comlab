@@ -66,8 +66,10 @@ Start sequence at 1, increment after an acknowledged successful response.
 }
 ```
 
-This is what the provided connection-test firmware reports. It advertises no
-power capability and no nodes. Example response with no work:
+This is what the controller reports before observing any node. The updated
+discovery firmware reports authenticated node heartbeats with power unknown;
+it still advertises no power capability. See [node setup](../firmware/NODES_SETUP.md).
+Example response with no work:
 
 ```json
 {
@@ -163,8 +165,10 @@ delivered unresolved work becomes unknown and is never replayed. Expired
 undelivered work is rejected; possibly delivered work becomes unknown. Do not
 release a reservation or repeat a physical pulse based on a timeout alone.
 
-**Not implemented in the current firmware:** PC node transport, power sensing,
-relay GPIO execution, and persistent NVS command deduplication. Every received
+**Implemented in the updated firmware:** authenticated local Wi-Fi node
+heartbeats and forwarding of observed connectivity through the cloud controller.
+**Not implemented:** power sensing, relay GPIO execution, and persistent NVS
+command deduplication. Every received
 power command is rejected; no pin is changed. A future executor must persist
 command identity before any physical pulse, return stored results for duplicates,
 check expiry/feedback, and recover without repeating a pulse after reset.
