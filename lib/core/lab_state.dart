@@ -17,7 +17,9 @@ class LabState extends ChangeNotifier {
   FirebaseAuth? kioskAuth, adminAuth;
   bool ready = false, busy = false, admin = false, cloudFresh = false;
   String? error, setupError;
-  String apiUrl = '', controllerUrl = '', pairingToken = '';
+  static const trustedApiUrl = 'https://comlab-api.onrender.com';
+  String get apiUrl => trustedApiUrl;
+  String controllerUrl = '', pairingToken = '';
   int timeoutMs = 4000, welcomeSeconds = 25;
   String screen = 'welcome';
   Json? student, session, operation, pending;
@@ -44,7 +46,7 @@ class LabState extends ChangeNotifier {
       final saved = await store.read('settings');
       if (saved != null) {
         final data = jsonDecode(saved) as Json;
-        apiUrl = data['apiUrl'] as String;
+        // Ignore legacy saved origins, including expired development tunnels.
         controllerUrl = data['controllerUrl'] as String;
         timeoutMs = data['timeoutMs'] as int;
       }
@@ -79,9 +81,7 @@ class LabState extends ChangeNotifier {
       setupError = '$e';
     }
     ready = true;
-    screen = setupError != null || apiUrl.isEmpty || !kioskSignedIn
-        ? 'setup'
-        : 'welcome';
+    screen = setupError != null || !kioskSignedIn ? 'setup' : 'welcome';
     notifyListeners();
     if (screen == 'welcome' && pending != null) await run(recover);
   }
@@ -116,23 +116,7 @@ class LabState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> configure(
-    String api,
-    String controller,
-    String token,
-    int timeout,
-  ) async {
-    final uri = Uri.tryParse(api);
-    if (uri == null ||
-        uri.scheme != 'https' ||
-        !uri.hasAuthority ||
-        uri.userInfo.isNotEmpty ||
-        uri.hasQuery ||
-        uri.hasFragment) {
-      throw ApiFailure(
-        'Enter an HTTPS API origin without query parameters or credentials.',
-      );
-    }
+  Future<void> configure(String controller, String token, int timeout) async {
     if (controller.isNotEmpty) {
       HttpController(
         controller,
@@ -142,17 +126,16 @@ class LabState extends ChangeNotifier {
     }
     if (admin) {
       final target = CloudRepository(
-        api.replaceFirst(RegExp(r'/$'), ''),
+        apiUrl,
         () async => adminAuth?.currentUser?.getIdToken(),
       );
       await target.post('/admin/connection-settings', {
-        'apiUrl': api,
+        'apiUrl': apiUrl,
         'controllerUrl': controller,
         'timeoutMs': timeout,
         'pairingChanged': token.isNotEmpty,
       });
     }
-    apiUrl = api.replaceFirst(RegExp(r'/$'), '');
     controllerUrl = controller.replaceFirst(RegExp(r'/$'), '');
     timeoutMs = timeout;
     if (token.isNotEmpty) {
@@ -173,26 +156,8 @@ class LabState extends ChangeNotifier {
     String email,
     String password, {
     required bool asAdmin,
-    String? apiOverride,
   }) async {
     if (setupError != null) throw ApiFailure(setupError!);
-    var targetApi = apiUrl;
-    if (apiOverride != null) {
-      final uri = Uri.tryParse(apiOverride.trim());
-      if (!asAdmin ||
-          uri == null ||
-          uri.scheme != 'https' ||
-          !uri.hasAuthority ||
-          uri.userInfo.isNotEmpty ||
-          uri.hasQuery ||
-          uri.hasFragment ||
-          (uri.path.isNotEmpty && uri.path != '/')) {
-        throw ApiFailure(
-          'Enter an HTTPS API origin without paths, credentials or query parameters. Only administrator sign-in can change this address.',
-        );
-      }
-      targetApi = uri.origin;
-    }
     final auth = asAdmin ? adminAuth! : kioskAuth!;
     try {
       await auth.signInWithEmailAndPassword(
@@ -200,7 +165,7 @@ class LabState extends ChangeNotifier {
         password: password,
       );
       final check = CloudRepository(
-        targetApi,
+        apiUrl,
         () async => auth.currentUser?.getIdToken(),
       );
       final me = await check.get('/me');
@@ -210,25 +175,6 @@ class LabState extends ChangeNotifier {
         );
       }
       if (asAdmin) {
-        if (targetApi != apiUrl) {
-          // Commit only after this destination approves the Firebase admin token.
-          await check.post('/admin/connection-settings', {
-            'apiUrl': targetApi,
-            'controllerUrl': controllerUrl,
-            'timeoutMs': timeoutMs,
-            'pairingChanged': false,
-          });
-          await store.write(
-            'settings',
-            jsonEncode({
-              'apiUrl': targetApi,
-              'controllerUrl': controllerUrl,
-              'timeoutMs': timeoutMs,
-            }),
-          );
-          apiUrl = targetApi;
-          cloudFresh = false;
-        }
         admin = true;
         screen = 'admin';
       } else {

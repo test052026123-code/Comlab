@@ -432,12 +432,10 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final email = TextEditingController(), password = TextEditingController();
-  late final api = TextEditingController(text: widget.state.apiUrl);
   @override
   void dispose() {
     email.dispose();
     password.dispose();
-    api.dispose();
     super.dispose();
   }
 
@@ -453,19 +451,6 @@ class _LoginScreenState extends State<LoginScreen> {
             'Administrator sign in',
             'Use an account provisioned by your laboratory owner.',
           ),
-          TextField(
-            key: const ValueKey('admin-api-address'),
-            controller: api,
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-            enableSuggestions: false,
-            decoration: const InputDecoration(
-              labelText: 'Trusted API HTTPS address',
-              helperText:
-                  'If the tunnel address changed, enter its current URL.',
-            ),
-          ),
-          const SizedBox(height: 16),
           TextField(
             controller: email,
             keyboardType: TextInputType.emailAddress,
@@ -487,14 +472,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 : () => widget.state.run(() async {
                     final signInEmail = email.text;
                     final signInPassword = password.text;
-                    final signInApi = api.text.trim();
                     FocusScope.of(context).unfocus();
                     password.clear();
                     await widget.state.login(
                       signInEmail,
                       signInPassword,
                       asAdmin: true,
-                      apiOverride: signInApi,
                     );
                   }),
           ),

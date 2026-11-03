@@ -10,8 +10,8 @@ outbound over trusted HTTPS; the Windows server and LAN DNS are unnecessary.
 The original LAN operating instructions below still apply to LAN mode.
 
 Android tablet laboratory-management prototype. Package: `com.comlab.kiosk`.
-Current debug APK: [ComLab-Cloud-build10.apk](build/app/outputs/flutter-apk/ComLab-Cloud-build10.apk)
-(version 1.0.0, build 10, configured for your ComLab Firebase Android registration).
+Current debug APK: [ComLab-Cloud-build11.apk](build/app/outputs/flutter-apk/ComLab-Cloud-build11.apk)
+(version 1.0.0, build 11, configured for your ComLab Firebase Android registration).
 Minimum Android 7 / API 24. Install over the earlier setup-only build to retain
 settings. Firebase values are in the ignored local `config/firebase.json`;
 server credentials are never included in the app.
@@ -27,10 +27,11 @@ with a compact input layout while that keyboard is open.
 Short tablet windows use a condensed check-in form to preserve readable keypad
 rows; validation includes the U24 Pro's 240-dpi display and Android system bars.
 Student request failures appear under **View error** in the header, preserving
-keypad/card height. If a temporary tunnel stops, start a new one and enter its
-actual verified origin in **Admin Login → Trusted API HTTPS address**. The new
-address is saved only after administrator role approval, connection-settings
-audit, and local secure-storage success; failed sign-in retains the old address.
+keypad/card height. The trusted API is fixed to `https://comlab-api.onrender.com`
+in `LabState.trustedApiUrl`; sign-in and settings have no address-entry field.
+Older saved tunnel addresses are ignored on upgrade. HTTPS trust checks and
+Firebase account approval are still required. Changing the origin requires
+editing that source constant and rebuilding the APK.
 This is an independent project in `C:\Users\clima\Desktop\ComLab`; it does not
 use eSURSECO's Firebase project, `.env`, API, or deployment configuration.
 
@@ -145,8 +146,9 @@ There is no public registration or automatic role promotion.
    ```powershell
    npm run provision -- revoke AUTH_UID
    ```
-3. On first tablet launch, save the HTTPS API URL, controller address, pairing
-   secret and timeout, then authenticate the approved kiosk account. The kiosk
+3. On first tablet launch, authenticate the approved kiosk account. The Render
+   API origin is already configured. Local controller settings are only needed
+   for optional LAN diagnostics. The kiosk
    password is not saved by ComLab; Firebase manages refresh credentials. The
    pairing secret and pending IDs use Android secure storage with backup disabled.
 4. Use **Administrator** to sign in with the separate administrator account.

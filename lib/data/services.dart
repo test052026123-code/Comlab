@@ -39,7 +39,7 @@ class CloudRepository implements LabRepository {
   ]) async {
     final uri = Uri.parse('$base$path');
     if (uri.scheme != 'https' || !uri.hasAuthority || uri.userInfo.isNotEmpty) {
-      throw ApiFailure('Configure an HTTPS trusted API URL in Settings.');
+      throw ApiFailure('A valid HTTPS trusted API origin is required.');
     }
     final auth = await token();
     if (auth == null) {
@@ -75,7 +75,7 @@ class CloudRepository implements LabRepository {
             : 'an unspecified destination';
         throw ApiFailure(
           'Cloud HTTP ${r.statusCode}: ${uri.origin} redirected to $target. '
-          'Request stopped. Check the saved API address and tablet network. '
+          'Request stopped. Check the cloud service and tablet network. '
           'Credentials were not forwarded.',
           r.statusCode,
         );

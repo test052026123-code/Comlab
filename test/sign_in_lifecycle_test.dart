@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kiosk/core/lab_state.dart';
@@ -15,9 +16,8 @@ class SignInState extends LabState {
     String email,
     String password, {
     required bool asAdmin,
-    String? apiOverride,
   }) async {
-    requestedApi = apiOverride;
+    requestedApi = apiUrl;
     await response.future;
     screen = 'welcome';
     notifyListeners();
@@ -28,37 +28,33 @@ class SignInState extends LabState {
 
 void main() {
   test(
-    'API address recovery rejects unsafe origins and kiosk overrides before authentication',
+    'fresh installs and saved tunnel settings use the fixed Render origin',
     () async {
-      final state = LabState(store: MemoryStore())
-        ..apiUrl = 'https://old.example';
-      for (final url in [
-        'http://api.example',
-        'https://user:secret@api.example',
-        'https://api.example/path',
-        'https://api.example?token=test',
-      ]) {
-        await expectLater(
-          state.login('unused', 'unused', asAdmin: true, apiOverride: url),
-          throwsA(isA<ApiFailure>()),
-        );
-        expect(state.apiUrl, 'https://old.example');
+      for (final oldApi in [null, 'https://expired.trycloudflare.com']) {
+        final store = MemoryStore();
+        if (oldApi != null) {
+          store.values['settings'] = jsonEncode({
+            'apiUrl': oldApi,
+            'controllerUrl': 'http://comlab-controller.local',
+            'timeoutMs': 7000,
+          });
+          store.values['pairing'] = 'unit-test-pairing';
+        }
+        final state = LabState(store: store);
+        expect(state.apiUrl, 'https://comlab-api.onrender.com');
+        await state.initialize();
+        expect(state.apiUrl, 'https://comlab-api.onrender.com');
+        if (oldApi != null) {
+          expect(state.controllerUrl, 'http://comlab-controller.local');
+          expect(state.timeoutMs, 7000);
+          expect(state.pairingToken, 'unit-test-pairing');
+        }
+        state.dispose();
       }
-      await expectLater(
-        state.login(
-          'unused',
-          'unused',
-          asAdmin: false,
-          apiOverride: 'https://new.example',
-        ),
-        throwsA(isA<ApiFailure>()),
-      );
-      expect(state.apiUrl, 'https://old.example');
-      state.dispose();
     },
   );
   testWidgets(
-    'administrator can supply a replacement API address without losing saved settings on failure',
+    'administrator sign-in uses the fixed origin without an address entry field',
     (tester) async {
       tester.view.physicalSize = const Size(1000, 1600);
       tester.view.devicePixelRatio = 1;
@@ -66,20 +62,20 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final state = SignInState()
         ..ready = true
-        ..screen = 'login'
-        ..apiUrl = 'https://old.example';
+        ..screen = 'login';
       await tester.pumpWidget(ComLabApp(state: state));
-      await tester.enterText(
-        find.byKey(const ValueKey('admin-api-address')),
-        'https://new.example',
+      expect(find.byKey(const ValueKey('admin-api-address')), findsNothing);
+      expect(
+        find.widgetWithText(TextField, 'Trusted API HTTPS address'),
+        findsNothing,
       );
       await tester.tap(find.text('Sign in'));
       await tester.pump();
-      expect(state.requestedApi, 'https://new.example');
-      expect(state.apiUrl, 'https://old.example');
+      expect(state.requestedApi, 'https://comlab-api.onrender.com');
+      expect(state.apiUrl, 'https://comlab-api.onrender.com');
       state.response.completeError(ApiFailure('Account not approved', 403));
       await tester.pumpAndSettle();
-      expect(state.apiUrl, 'https://old.example');
+      expect(state.apiUrl, 'https://comlab-api.onrender.com');
       expect(find.text('Account not approved'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -97,6 +93,10 @@ void main() {
         ..ready = true
         ..screen = 'setup';
       await tester.pumpWidget(ComLabApp(state: state));
+      expect(
+        find.widgetWithText(TextField, 'Trusted API HTTPS address'),
+        findsNothing,
+      );
       final password = find.widgetWithText(TextField, 'Kiosk account password');
       await tester.ensureVisible(password);
       await tester.enterText(password, 'test-only-password');

@@ -11,8 +11,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final api = TextEditingController(),
-      controller = TextEditingController(),
+  final controller = TextEditingController(),
       token = TextEditingController(),
       email = TextEditingController(),
       password = TextEditingController(),
@@ -22,7 +21,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    api.text = widget.state.apiUrl;
     controller.text = widget.state.controllerUrl;
     timeout.text = '${widget.state.timeoutMs}';
     welcome.text = '${widget.state.welcomeSeconds}';
@@ -30,15 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    for (final c in [
-      api,
-      controller,
-      token,
-      email,
-      password,
-      timeout,
-      welcome,
-    ]) {
+    for (final c in [controller, token, email, password, timeout, welcome]) {
       c.dispose();
     }
     super.dispose();
@@ -115,13 +105,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               widget.initial
                   ? 'Connect your laboratory'
                   : 'Settings & diagnostics',
-              'Real Firebase • Approved kiosk identity • Paired local controller',
+              'Secure cloud connection • Approved kiosk identity',
             ),
             if (s.setupError != null) Notice(s.setupError!, error: true),
             const Notice(
-              'The trusted API must run on a secured host with internet and controller LAN access. Credentials for Firebase Admin belong only on that host. See README.md for provisioning.',
+              'The cloud server address is already configured. Sign in with your approved account. Local controller settings are optional for LAN diagnostics.',
             ),
-            field('Trusted API HTTPS address', api),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.cloud_done_outlined),
+              title: Text('Cloud server'),
+              subtitle: Text(LabState.trustedApiUrl),
+            ),
             field(
               'Controller address (HTTPS or http://comlab-controller.local)',
               controller,
@@ -145,12 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           'Timeout must be 1000–15000 ms.',
                         );
                       }
-                      await s.configure(
-                        api.text.trim(),
-                        controller.text.trim(),
-                        token.text,
-                        ms,
-                      );
+                      await s.configure(controller.text.trim(), token.text, ms);
                       token.clear();
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(

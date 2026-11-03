@@ -273,6 +273,18 @@ the system. Student ID entry remains a temporary record lookup, not identity
 verification.
 # Cloud migration local verification
 
+Fixed-origin update: the app uses `https://comlab-api.onrender.com` through an
+immutable source constant. Legacy saved tunnel origins are ignored; sign-in and
+settings have no API address input. All 26 Flutter tests passed, including fresh
+installation/legacy-setting migration, sign-in failure/retry and redirect
+credential protection. Analyzer found no issues. APK delivery status is below.
+
+Build 11 (`ComLab-Cloud-build11.apk`) compiled successfully and was installed
+over the existing app on connected tablet `0123456789ABCDEF` using `adb install
+-r`. Android reports versionCode 11 / versionName 1.0.0. The app was launched;
+no administrator/kiosk password was entered during delivery. Installation
+retains application data; the old saved API origin is ignored by this build.
+
 - Server: 28 tests passed, including cloud auth, atomic queue creation, sequence
   replay, stale telemetry, command expiry and no redelivery after controller reboot.
 - Flutter: 26 tests passed; analyzer found no issues. Cloud commands retain their

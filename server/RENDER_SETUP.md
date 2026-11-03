@@ -59,9 +59,10 @@ document; placeholder arguments below must be replaced with that actual origin.
 1. Open the actual origin plus `/healthz`: expect `{"status":"ok"}`.
 2. Open `/health` without a token: expect HTTP 401. This is the access guard,
    not proof that a kiosk is approved or that the controller is connected.
-3. Install the cloud-compatible APK. In **Admin Login > Trusted API HTTPS
-   address**, enter the actual Render origin only, and sign in with the approved
-   administrator. The app validates Firebase approval before saving the origin.
+3. Install cloud-compatible APK build 11 or newer. The current app fixes the
+   trusted API to `https://comlab-api.onrender.com`; no address entry is needed.
+   Sign in with the approved administrator. If a future deployment uses a
+   different origin, update `LabState.trustedApiUrl` and rebuild first.
 4. With authenticated diagnostics, verify Firestore and `/controller/status`.
    The controller will remain offline until the configured sketch is uploaded.
 
