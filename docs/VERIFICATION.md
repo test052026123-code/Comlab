@@ -273,6 +273,21 @@ the system. Student ID entry remains a temporary record lookup, not identity
 verification.
 # Cloud migration local verification
 
+Workstation-dialog fix: a focused create/save regression test reproduced both
+`TextEditingController was used after being disposed` and `_dependents.isEmpty`
+on the original form. `WorkstationEditorDialog` now owns its controllers, clears
+focus before closing, and disposes controllers with its route state. The admin
+caller checks `mounted` after awaiting the dialog. All 33 Flutter tests passed,
+including focused workstation create, cancel, edit and API-failure paths;
+analyzer found no issues. A read-only live check found PC-01 was not yet saved;
+no workstation or student data was written during testing.
+APK build 13 compiled successfully and was installed over the existing app on
+tablet `0123456789ABCDEF` with `adb install -r`, then launched. Android reports
+versionCode 13 / versionName 1.0.0. No account password was entered during this
+delivery, so the physical workstation-create flow still requires the approved
+administrator to sign in and retry; the regression paths above were tested
+using an in-memory repository.
+
 Windows low-memory recovery: the observed machine had approximately 500 MB free
 physical RAM and 797 MB free virtual memory when diagnosing repeated cc1plus
 allocation failures. Added `Build-Firmware.ps1` with `--jobs 1`, plus a prebuilt

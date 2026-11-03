@@ -7,6 +7,7 @@ import '../core/contracts.dart';
 import '../core/lab_state.dart';
 import 'widgets.dart';
 import 'student_editor.dart';
+import 'workstation_editor.dart';
 
 class AdminData extends ChangeNotifier {
   AdminData(this.lab);
@@ -415,89 +416,15 @@ class _AdminScreenState extends State<AdminScreen> {
     ),
   ]);
   Future<void> _pcEditor([Json? p]) async {
-    final id = TextEditingController(text: p?['id'] as String?),
-        node = TextEditingController(text: p?['nodeId'] as String?),
-        notes = TextEditingController(text: p?['notes'] as String?);
-    bool enabled = p?['enabled'] as bool? ?? true,
-        maintenance = p?['maintenance'] as bool? ?? false;
     final assigned = data.allHistory
         .where((s) => s['id'] == p?['sessionId'])
         .firstOrNull;
     final values = await showDialog<Json>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, set) => AlertDialog(
-          title: Text(
-            p == null ? 'Create PC-01 through PC-05' : '${p['id']} details',
-          ),
-          content: SizedBox(
-            width: 500,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (assigned != null)
-                    Notice(
-                      'Assigned: ${assigned['name']} • ${assigned['studentId']}\nSince ${displayTime(assigned['timeIn'])}',
-                    ),
-                  TextField(
-                    controller: id,
-                    enabled: p == null,
-                    decoration: const InputDecoration(
-                      labelText: 'Workstation ID (PC-01 … PC-05)',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: node,
-                    decoration: const InputDecoration(
-                      labelText: 'Unique node ID (uppercase)',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: notes,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Maintenance notes',
-                    ),
-                  ),
-                  SwitchListTile(
-                    title: const Text('Enabled for selection'),
-                    value: enabled,
-                    onChanged: (v) => set(() => enabled = v),
-                  ),
-                  SwitchListTile(
-                    title: const Text('Maintenance restriction'),
-                    value: maintenance,
-                    onChanged: (v) => set(() => maintenance = v),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, {
-                'id': id.text.trim().toUpperCase(),
-                'nodeId': node.text.trim().toUpperCase(),
-                'notes': notes.text,
-                'enabled': enabled,
-                'maintenance': maintenance,
-              }),
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) =>
+          WorkstationEditorDialog(workstation: p, assigned: assigned),
     );
-    id.dispose();
-    node.dispose();
-    notes.dispose();
+    if (!mounted) return;
     if (values != null) {
       await widget.state.run(() async {
         final key = values.remove('id');

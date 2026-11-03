@@ -14,8 +14,8 @@ unnecessary. Node discovery uses local mDNS between the ESP32 boards.
 The original LAN operating instructions below still apply to LAN mode.
 
 Android tablet laboratory-management prototype. Package: `com.comlab.kiosk`.
-Current debug APK: [ComLab-Cloud-build12.apk](build/app/outputs/flutter-apk/ComLab-Cloud-build12.apk)
-(version 1.0.0, build 12, configured for your ComLab Firebase Android registration).
+Current debug APK: [ComLab-Cloud-build13.apk](build/app/outputs/flutter-apk/ComLab-Cloud-build13.apk)
+(version 1.0.0, build 13, configured for your ComLab Firebase Android registration).
 Minimum Android 7 / API 24. Install over the earlier setup-only build to retain
 settings. Firebase values are in the ignored local `config/firebase.json`;
 server credentials are never included in the app.
