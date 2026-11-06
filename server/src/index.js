@@ -11,6 +11,7 @@ import { CloudController } from './cloud-controller.js';
 import { authenticateDevice } from './device-auth.js';
 import { Fingerprints } from './fingerprints.js';
 import { RelayBenchTests } from './relay-bench.js';
+import { adminWebCors } from './admin-web.js';
 import { Fault, requireThat, csv, approvedRole } from './domain.js';
 
 if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('ComLab requires real Firebase services.');
@@ -28,7 +29,7 @@ const fingerprints = new Fingerprints(db, process.env.CONTROLLER_ID || 'LAB-CONT
 const relayBench = new RelayBenchTests(db, process.env.CONTROLLER_ID || 'LAB-CONTROLLER', lab);
 const app = express();
 app.disable('x-powered-by');
-app.use(helmet(), express.json({ limit: '16kb' }));
+app.use(helmet(), adminWebCors, express.json({ limit: '16kb' }));
 // Process liveness only. Firebase/controller checks stay authenticated.
 app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'node-bench-2' }));
 if (transport === 'cloud') {
