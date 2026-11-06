@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { Fault, requireThat } from './domain.js';
+import { fingerprintResultSchema } from './fingerprints.js';
 
 const stamp = () => FieldValue.serverTimestamp();
 const pcId = z.string().regex(/^PC-0[1-5]$/);
@@ -11,6 +12,7 @@ export const syncSchema = z.object({
   protocolVersion: z.literal(1), bootId: z.uuid(), sequence: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   sampledAt: z.iso.datetime(), uptimeMs: z.number().int().nonnegative(), firmwareVersion: z.string().min(1).max(64),
   capabilities: z.array(z.literal('power_on')).max(1),
+  fingerprintResult: fingerprintResultSchema.optional(),
   nodes: z.array(z.object({ workstationId: pcId, nodeId,
     connectivity: z.enum(['connected', 'disconnected']), power: z.enum(['on', 'off', 'unknown']),
     reachability: z.enum(['reachable', 'unreachable', 'unknown']), input: z.enum(['active', 'idle', 'unknown']),

@@ -9,6 +9,7 @@ import { LabService } from './service.js';
 import { Controller } from './controller.js';
 import { CloudController } from './cloud-controller.js';
 import { authenticateDevice } from './device-auth.js';
+import { Fingerprints } from './fingerprints.js';
 import { Fault, requireThat, csv, approvedRole } from './domain.js';
 
 if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('ComLab requires real Firebase services.');
@@ -22,16 +23,18 @@ if (transport === 'cloud' && (!/^[A-Za-z0-9_-]{1,48}$/.test(process.env.CONTROLL
 const controller = transport === 'cloud' ? new CloudController(db, process.env.CONTROLLER_ID)
   : new Controller(process.env.CONTROLLER_URL, process.env.CONTROLLER_TOKEN, Number(process.env.CONTROLLER_TIMEOUT_MS || 4000));
 const lab = new LabService(db, controller);
+const fingerprints = new Fingerprints(db, process.env.CONTROLLER_ID || 'LAB-CONTROLLER', lab);
 const app = express();
 app.disable('x-powered-by');
 app.use(helmet(), express.json({ limit: '16kb' }));
 // Process liveness only. Firebase/controller checks stay authenticated.
-app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
+app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'fingerprint-1' }));
 if (transport === 'cloud') {
   app.post('/v1/controller/sync', rateLimit({ windowMs: 60000, limit: 60 }), async (req, res, next) => {
     try {
       authenticateDevice(req.headers, process.env.CONTROLLER_ID, process.env.CONTROLLER_DEVICE_KEY_SHA256);
-      res.json(await controller.sync(req.body));
+      const response = await controller.sync(req.body);
+      res.json({ ...response, ...await fingerprints.deviceExchange(req.body.fingerprintResult) });
     } catch (e) { next(e); }
   });
 }
@@ -40,7 +43,8 @@ const id = z.string().regex(/^[A-Z0-9][A-Z0-9_-]{0,39}$/);
 const pcId = z.string().regex(/^PC-0[1-5]$/);
 const uuid = z.string().uuid();
 const text = z.string().trim().min(1).max(300);
-const reservation = z.object({ operationId: uuid, studentId: id, workstationId: pcId }).strict();
+const reservation = z.object({ operationId: uuid, studentId: id, workstationId: pcId, scanRequestId: uuid.optional() }).strict();
+const studentRecord = z.object({ name: text, section: text, active: z.boolean(), fingerprintSlot: z.number().int().min(0).max(999).nullable().optional() });
 app.use(async (req, res, next) => {
   try {
     const bearer = req.headers.authorization;
@@ -63,22 +67,45 @@ app.get('/health', async (req, res) => {
 });
 app.get('/controller/status', async (req, res) => res.json(transport === 'cloud' ? await controller.status() : { transport: 'lan' }));
 app.post('/lookup', rateLimit({ windowMs: 60000, limit: 15 }), async (req, res) => {
+  requireThat(req.actor.role === 'admin', 'Use the fingerprint scanner to identify a student.', 403);
   res.json(await lab.lookup(id.parse(req.body.studentId)));
 });
+app.post('/fingerprint/requests', rateLimit({ windowMs: 60000, limit: 15 }), async (req, res) => {
+  requireThat(transport === 'cloud', 'Fingerprint scanning requires cloud controller mode.', 503);
+  const { requestId } = z.object({ requestId: uuid }).strict().parse(req.body);
+  res.json(await fingerprints.start(req.actor, requestId));
+});
+app.get('/fingerprint/requests/:id', async (req, res) => res.json(await fingerprints.read(req.actor, uuid.parse(req.params.id))));
+app.post('/fingerprint/requests/:id/cancel', async (req, res) => res.json(await fingerprints.cancel(req.actor, uuid.parse(req.params.id))));
 app.get('/workstations', async (req, res) => {
   const data = await lab.workstations();
   // Kiosks do not receive student names or internal maintenance notes.
   if (req.actor.role === 'kiosk') data.workstations = data.workstations.map(p => ({ id: p.id, nodeId: p.nodeId, enabled: p.enabled, maintenance: p.maintenance, assignment: p.assignment, eligible: p.eligible, node: p.node }));
   res.json(data);
 });
-app.post('/reserve', async (req, res) => res.json(await lab.reserve(req.actor, reservation.parse(req.body))));
+app.post('/reserve', async (req, res) => {
+  const data = reservation.parse(req.body);
+  if (req.actor.role !== 'admin') await fingerprints.authorize(req.actor, uuid.parse(data.scanRequestId), data.studentId);
+  res.json(await lab.reserve(req.actor, data));
+});
 app.get('/operations/:id', async (req, res) => res.json(await lab.operation(req.actor, uuid.parse(req.params.id))));
 app.post('/operations/:id/reconcile', async (req, res) => res.json(await lab.reconcile(req.actor, uuid.parse(req.params.id))));
 app.post('/sessions/:id/close', async (req, res) => {
-  const reason = req.actor.role === 'admin' ? text.parse(req.body.reason) : 'Student checkout — temporary ID entry';
+  const reason = req.actor.role === 'admin' ? text.parse(req.body.reason) : 'Student checkout — fingerprint identification';
+  if (req.actor.role !== 'admin') {
+    const session = (await db.doc(`sessions/${uuid.parse(req.params.id)}`).get()).data();
+    await fingerprints.authorize(req.actor, uuid.parse(req.body.scanRequestId), session?.studentId);
+  }
   res.json(await lab.close(req.actor, uuid.parse(req.params.id), reason));
 });
-app.post('/issues', async (req, res) => res.json(await lab.issue(req.actor, z.object({ sessionId: uuid, description: text }).strict().parse(req.body))));
+app.post('/issues', async (req, res) => {
+  const data = z.object({ sessionId: uuid, description: text, scanRequestId: uuid.optional() }).strict().parse(req.body);
+  if (req.actor.role !== 'admin') {
+    const session = (await db.doc(`sessions/${data.sessionId}`).get()).data();
+    await fingerprints.authorize(req.actor, uuid.parse(data.scanRequestId), session?.studentId);
+  }
+  res.json(await lab.issue(req.actor, data));
+});
 app.get('/settings', async (req, res) => {
   const s = (await db.doc('settings/lab').get()).data();
   res.json({ welcomeTimeoutSeconds: s?.welcomeTimeoutSeconds ?? 25, shutdownOnCheckout: false });
@@ -91,17 +118,10 @@ app.post('/admin/connection-settings', async (req, res) => {
 app.post('/admin/operations/:id/cancel-uncommitted', async (req, res) => res.json(await lab.cancelUncommitted(req.actor, uuid.parse(req.params.id))));
 app.get('/admin/students', async (req, res) => res.json({ rows: await lab.list('students') }));
 app.post('/admin/students', async (req, res) => {
-  const data = z.object({ id, name: text, section: text, active: z.boolean() }).strict().parse(req.body);
-  await db.runTransaction(async tx => {
-    const ref = db.doc(`students/${data.id}`);
-    requireThat(!(await tx.get(ref)).exists, 'Student ID already exists. Edit the existing student instead.');
-    const { id: studentId, ...record } = data;
-    tx.create(ref, record);
-    lab.audit(tx, req.actor, 'student_create', { studentId, ...record });
-  });
-  res.json({ saved: true });
+  const { id: studentId, ...data } = studentRecord.extend({ id }).strict().parse(req.body);
+  res.json(await fingerprints.saveStudent(req.actor, studentId, data, true));
 });
-app.put('/admin/students/:id', async (req, res) => res.json(await lab.save(req.actor, 'students', id.parse(req.params.id), z.object({ name: text, section: text, active: z.boolean() }).strict().parse(req.body))));
+app.put('/admin/students/:id', async (req, res) => res.json(await fingerprints.saveStudent(req.actor, id.parse(req.params.id), studentRecord.strict().parse(req.body))));
 app.put('/admin/workstations/:id', async (req, res) => res.json(await lab.save(req.actor, 'workstations', pcId.parse(req.params.id), z.object({ nodeId: id, enabled: z.boolean(), maintenance: z.boolean(), notes: z.string().max(1000) }).strict().parse(req.body))));
 async function history(query) {
   const filter = z.object({ student: z.string().optional(), pc: z.string().optional(), section: z.string().optional(), from: z.iso.date().optional(), to: z.iso.date().optional() }).parse(query);
