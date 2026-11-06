@@ -26,7 +26,7 @@ try {
     await new Promise(resolve => setTimeout(resolve,250));
   }
   assert.ok(ready);
-  assert.equal((await (await fetch('http://127.0.0.1:18081/healthz')).json()).apiVersion, 'fingerprint-1');
+  assert.equal((await (await fetch('http://127.0.0.1:18081/healthz')).json()).apiVersion, 'node-bench-2');
   assert.equal((await fetch('http://127.0.0.1:18081/health')).status,401);
   assert.equal((await fetch('http://127.0.0.1:18081/controller/status')).status,401);
   assert.equal((await fetch('http://127.0.0.1:18081/fingerprint/requests', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})).status,401);

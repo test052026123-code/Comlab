@@ -10,6 +10,7 @@ import { Controller } from './controller.js';
 import { CloudController } from './cloud-controller.js';
 import { authenticateDevice } from './device-auth.js';
 import { Fingerprints } from './fingerprints.js';
+import { RelayBenchTests } from './relay-bench.js';
 import { Fault, requireThat, csv, approvedRole } from './domain.js';
 
 if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('ComLab requires real Firebase services.');
@@ -24,17 +25,19 @@ const controller = transport === 'cloud' ? new CloudController(db, process.env.C
   : new Controller(process.env.CONTROLLER_URL, process.env.CONTROLLER_TOKEN, Number(process.env.CONTROLLER_TIMEOUT_MS || 4000));
 const lab = new LabService(db, controller);
 const fingerprints = new Fingerprints(db, process.env.CONTROLLER_ID || 'LAB-CONTROLLER', lab);
+const relayBench = new RelayBenchTests(db, process.env.CONTROLLER_ID || 'LAB-CONTROLLER', lab);
 const app = express();
 app.disable('x-powered-by');
 app.use(helmet(), express.json({ limit: '16kb' }));
 // Process liveness only. Firebase/controller checks stay authenticated.
-app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'fingerprint-1' }));
+app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'node-bench-2' }));
 if (transport === 'cloud') {
   app.post('/v1/controller/sync', rateLimit({ windowMs: 60000, limit: 60 }), async (req, res, next) => {
     try {
       authenticateDevice(req.headers, process.env.CONTROLLER_ID, process.env.CONTROLLER_DEVICE_KEY_SHA256);
       const response = await controller.sync(req.body);
-      res.json({ ...response, ...await fingerprints.deviceExchange(req.body.fingerprintResult) });
+      res.json({ ...response, ...await fingerprints.deviceExchange(req.body.fingerprintResult),
+        ...await relayBench.deviceExchange(req.body.benchResult, req.body.benchSupported === true) });
     } catch (e) { next(e); }
   });
 }
@@ -111,6 +114,11 @@ app.get('/settings', async (req, res) => {
   res.json({ welcomeTimeoutSeconds: s?.welcomeTimeoutSeconds ?? 25, shutdownOnCheckout: false });
 });
 app.use('/admin', admin);
+app.post('/admin/relay-tests', rateLimit({ windowMs: 60000, limit: 15 }), async (req, res) => {
+  requireThat(transport === 'cloud', 'Remote relay testing requires cloud controller mode.', 503);
+  res.json(await relayBench.start(req.actor, z.object({ commandId: uuid, workstationId: pcId }).strict().parse(req.body)));
+});
+app.get('/admin/relay-tests/:id', async (req, res) => res.json(await relayBench.read(req.actor, uuid.parse(req.params.id))));
 app.post('/admin/connection-settings', async (req, res) => {
   const data = z.object({ apiUrl: z.url(), controllerUrl: z.string().max(300), timeoutMs: z.number().int().min(1000).max(15000), pairingChanged: z.boolean() }).strict().parse(req.body);
   res.json(await lab.save(req.actor, 'settings', `device-${req.actor.uid}`, data));
