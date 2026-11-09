@@ -10,8 +10,9 @@ class StudentEditorDialog extends StatefulWidget {
 }
 
 class _StudentEditorDialogState extends State<StudentEditorDialog> {
-  late final TextEditingController id, name, section;
+  late final TextEditingController id, name, section, fingerprintSlot;
   late bool active;
+  String? slotError;
 
   @override
   void initState() {
@@ -20,6 +21,9 @@ class _StudentEditorDialogState extends State<StudentEditorDialog> {
     id = TextEditingController(text: student?['id'] as String?);
     name = TextEditingController(text: student?['name'] as String?);
     section = TextEditingController(text: student?['section'] as String?);
+    fingerprintSlot = TextEditingController(
+      text: student?['fingerprintSlot']?.toString() ?? '',
+    );
     active = student?['active'] as bool? ?? true;
   }
 
@@ -28,6 +32,7 @@ class _StudentEditorDialogState extends State<StudentEditorDialog> {
     id.dispose();
     name.dispose();
     section.dispose();
+    fingerprintSlot.dispose();
     super.dispose();
   }
 
@@ -65,6 +70,18 @@ class _StudentEditorDialogState extends State<StudentEditorDialog> {
               onChanged: (value) => setState(() => active = value),
               title: const Text('Active / eligible to check in'),
             ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: fingerprintSlot,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Fingerprint slot',
+                helperText:
+                    'Set automatically by the fingerprint button in the student list.\nEdit only to link a USB-enrolled slot; leave blank to unlink.',
+                helperMaxLines: 3,
+                errorText: slotError,
+              ),
+            ),
           ],
         ),
       ),
@@ -72,12 +89,24 @@ class _StudentEditorDialogState extends State<StudentEditorDialog> {
     actions: [
       TextButton(onPressed: () => close(), child: const Text('Cancel')),
       FilledButton(
-        onPressed: () => close({
-          'id': id.text,
-          'name': name.text.trim(),
-          'section': section.text.trim(),
-          'active': active,
-        }),
+        onPressed: () {
+          final raw = fingerprintSlot.text.trim();
+          final slot = int.tryParse(raw);
+          if (raw.isNotEmpty && (slot == null || slot < 0 || slot > 999)) {
+            setState(
+              () => slotError =
+                  'Enter a slot from 0 to 999, within your sensor capacity.',
+            );
+            return;
+          }
+          close({
+            'id': id.text,
+            'name': name.text.trim(),
+            'section': section.text.trim(),
+            'active': active,
+            'fingerprintSlot': raw.isEmpty ? null : slot,
+          });
+        },
         child: const Text('Save'),
       ),
     ],

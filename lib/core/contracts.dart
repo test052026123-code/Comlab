@@ -7,7 +7,7 @@ abstract interface class Identification {
 
 class StudentIdIdentification implements Identification {
   @override
-  String get label => 'Student ID — temporary';
+  String get label => 'Student record ID';
   @override
   String normalize(String input) {
     final id = input.trim().toUpperCase();

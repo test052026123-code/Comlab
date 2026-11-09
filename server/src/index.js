@@ -31,13 +31,13 @@ const app = express();
 app.disable('x-powered-by');
 app.use(helmet(), adminWebCors, express.json({ limit: '16kb' }));
 // Process liveness only. Firebase/controller checks stay authenticated.
-app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'node-bench-2' }));
+app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'fingerprint-enroll-1' }));
 if (transport === 'cloud') {
   app.post('/v1/controller/sync', rateLimit({ windowMs: 60000, limit: 60 }), async (req, res, next) => {
     try {
       authenticateDevice(req.headers, process.env.CONTROLLER_ID, process.env.CONTROLLER_DEVICE_KEY_SHA256);
       const response = await controller.sync(req.body);
-      res.json({ ...response, ...await fingerprints.deviceExchange(req.body.fingerprintResult),
+      res.json({ ...response, ...await fingerprints.deviceExchange(req.body.fingerprintResult, req.body.fingerprintProgress, req.body.fingerprintCapacity),
         ...await relayBench.deviceExchange(req.body.benchResult, req.body.benchSupported === true) });
     } catch (e) { next(e); }
   });
@@ -78,6 +78,11 @@ app.post('/fingerprint/requests', rateLimit({ windowMs: 60000, limit: 15 }), asy
   requireThat(transport === 'cloud', 'Fingerprint scanning requires cloud controller mode.', 503);
   const { requestId } = z.object({ requestId: uuid }).strict().parse(req.body);
   res.json(await fingerprints.start(req.actor, requestId));
+});
+app.post('/admin/fingerprint/enroll', rateLimit({ windowMs: 60000, limit: 15 }), async (req, res) => {
+  requireThat(transport === 'cloud', 'Fingerprint enrollment requires cloud controller mode.', 503);
+  const { requestId, studentId } = z.object({ requestId: uuid, studentId: id }).strict().parse(req.body);
+  res.json(await fingerprints.startEnroll(req.actor, requestId, studentId));
 });
 app.get('/fingerprint/requests/:id', async (req, res) => res.json(await fingerprints.read(req.actor, uuid.parse(req.params.id))));
 app.post('/fingerprint/requests/:id/cancel', async (req, res) => res.json(await fingerprints.cancel(req.actor, uuid.parse(req.params.id))));

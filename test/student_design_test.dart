@@ -28,7 +28,7 @@ LabState designState() => LabState(store: MemoryStore())
   ];
 
 void main() {
-  testWidgets('student request errors preserve keypad and PC card space', (
+  testWidgets('student request errors preserve scan and PC card space', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 800);
@@ -44,7 +44,7 @@ void main() {
       await tester.pumpWidget(ComLabApp(state: state));
       await tester.pumpAndSettle();
       final target = screen == 'welcome'
-          ? find.widgetWithText(OutlinedButton, '1')
+          ? find.byKey(const ValueKey('fingerprint-scan-button'))
           : find.byType(PcCard).first;
       final before = tester.getRect(target);
       await state.run(() async {
@@ -63,128 +63,39 @@ void main() {
       await tester.pumpAndSettle();
       expect(state.error, isNull);
       expect(tester.takeException(), isNull);
+      state.fingerprintScanning = true;
+      state.navigate('welcome');
+      await tester.pumpAndSettle();
+      expect(find.text('Waiting for fingerprint...'), findsOneWidget);
+      expect(find.text('Cancel scan').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       state.dispose();
     }
   });
-  testWidgets('U24 Pro density and system bars leave readable full keypad', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 800);
-    tester.view.devicePixelRatio = 1.5;
-    tester.view.padding = const FakeViewPadding(top: 36, bottom: 72);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPadding);
-    addTearDown(tester.view.resetViewInsets);
-    final state = designState();
-    await tester.pumpWidget(ComLabApp(state: state));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    for (final label in [
-      '1',
-      '2',
-      '3',
-      '4',
-      '5',
-      '6',
-      '7',
-      '8',
-      '9',
-      '0',
-      'Clear',
-    ]) {
-      final key = find.widgetWithText(OutlinedButton, label);
-      expect(key.hitTestable(), findsOneWidget);
-      expect(tester.getSize(key).height, greaterThanOrEqualTo(40));
-      final text = tester.getRect(
-        find.descendant(of: key, matching: find.text(label)),
+  testWidgets(
+    'U24 Pro has a visible fingerprint action and no student ID input',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.5;
+      tester.view.padding = const FakeViewPadding(top: 36, bottom: 72);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+      final state = designState();
+      await tester.pumpWidget(ComLabApp(state: state));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+      expect(
+        find.byKey(const ValueKey('fingerprint-scan-button')).hitTestable(),
+        findsOneWidget,
       );
-      expect(tester.getRect(key).contains(text.topLeft), isTrue);
-      expect(tester.getRect(key).contains(text.bottomRight), isTrue);
-    }
-    expect(
-      find.byKey(const ValueKey('continue-button')).hitTestable(),
-      findsOneWidget,
-    );
-    await tester.tap(find.widgetWithText(OutlinedButton, '1'));
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const ValueKey('student-id-entry')))
-          .controller!
-          .text,
-      '1',
-    );
-    await tester.tap(find.byTooltip('Use letters or symbols'));
-    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    expect(
-      find.byKey(const ValueKey('continue-button')).hitTestable(),
-      findsOneWidget,
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('student-id-entry')),
-      'ABC-123',
-    );
-    await tester.tap(find.byTooltip('Use numeric keypad'));
-    tester.view.resetViewInsets();
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const ValueKey('student-id-entry')))
-          .controller!
-          .text,
-      'ABC-123',
-    );
-    await tester.pumpWidget(const SizedBox());
-    state.dispose();
-  });
-  testWidgets('letter keyboard keeps ID entry and Continue visible', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1024, 600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetViewInsets);
-    final state = designState();
-    await tester.pumpWidget(ComLabApp(state: state));
-    await tester.tap(find.byTooltip('Use letters or symbols'));
-    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    expect(
-      find.byKey(const ValueKey('student-id-entry')).hitTestable(),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('continue-button')).hitTestable(),
-      findsOneWidget,
-    );
-    expect(
-      tester.getRect(find.byKey(const ValueKey('continue-button'))).bottom,
-      lessThan(300),
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('student-id-entry')),
-      'ABC-123',
-    );
-    await tester.tap(find.byTooltip('Use numeric keypad'));
-    tester.view.resetViewInsets();
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const ValueKey('student-id-entry')))
-          .controller!
-          .text,
-      'ABC-123',
-    );
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-    state.dispose();
-  });
+      expect(find.byIcon(Icons.fingerprint), findsWidgets);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      state.dispose();
+    },
+  );
   testWidgets('tablet check-in and all five PCs fit without page scrolling', (
     tester,
   ) async {
@@ -224,7 +135,9 @@ void main() {
         );
         final target = find.byKey(
           ValueKey(
-            screen == 'welcome' ? 'continue-button' : 'pc-confirmation-bar',
+            screen == 'welcome'
+                ? 'fingerprint-scan-button'
+                : 'pc-confirmation-bar',
           ),
         );
         expect(
@@ -235,17 +148,9 @@ void main() {
         final bounds = tester.getRect(target);
         expect(bounds.bottom, lessThan(size.height - 40));
         if (screen == 'welcome') {
-          final key = find.widgetWithText(OutlinedButton, '1');
+          final key = find.byKey(const ValueKey('fingerprint-scan-button'));
           expect(tester.getSize(key).height, greaterThanOrEqualTo(40));
-          expect(
-            tester
-                .widget<TextField>(
-                  find.byKey(const ValueKey('student-id-entry')),
-                )
-                .keyboardType,
-            TextInputType.none,
-          );
-          expect(find.text('Check Out').hitTestable(), findsOneWidget);
+          expect(find.byType(TextField), findsNothing);
         } else {
           expect(find.byType(PcCard), findsNWidgets(5));
           for (var i = 1; i <= 5; i++) {
@@ -257,41 +162,6 @@ void main() {
       }
     }
   });
-  testWidgets(
-    'keypad supports insert, delete and clear without cloud requests',
-    (tester) async {
-      tester.view.physicalSize = const Size(1280, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final state = designState();
-      await tester.pumpWidget(ComLabApp(state: state));
-      for (final digit in ['1', '2', '3']) {
-        await tester.tap(find.widgetWithText(OutlinedButton, digit));
-      }
-      final field = tester.widget<TextField>(
-        find.byKey(const ValueKey('student-id-entry')),
-      );
-      expect(field.controller!.text, '123');
-      await tester.tap(find.byIcon(Icons.backspace_outlined));
-      expect(field.controller!.text, '12');
-      field.controller!.selection = const TextSelection(
-        baseOffset: 0,
-        extentOffset: 1,
-      );
-      await tester.tap(find.widgetWithText(OutlinedButton, '9'));
-      expect(field.controller!.text, '92');
-      await tester.tap(find.text('Clear'));
-      expect(field.controller!.text, isEmpty);
-      await tester.tap(find.text('Check Out'));
-      await tester.pump();
-      expect(find.text('Find my session'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-      state.dispose();
-    },
-  );
-
   testWidgets(
     'PC cards select eligible PCs and disable confirmation when stale',
     (tester) async {

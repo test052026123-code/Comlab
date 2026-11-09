@@ -72,6 +72,7 @@ void main() {
                     'name': 'Test Student',
                     'section': 'Test Section',
                     'active': true,
+                    'fingerprintSlot': null,
                   },
                 ]
               : isEmpty,

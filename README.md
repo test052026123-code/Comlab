@@ -1,5 +1,26 @@
 # ComLab
 
+Browser administration is implemented in [web/admin](web/admin/README.md).
+Dashboard: https://test052026123-code.github.io/Comlab/
+It reuses the current Firebase admin accounts and trusted API for student and
+fingerprint-slot management, workstation status/tests, attendance, and issues.
+Tablet build 15 is installed; its existing admin tools remain available while
+the new website completes real-account acceptance testing.
+
+Remote relay bench control: **Admin → Workstations → Test node relay** sends
+one 300 ms pulse through the cloud and central controller to the workstation
+node, with no PC attached. It requires app build 15 and updated central/node
+firmware. See [remote relay test](firmware/REMOTE_RELAY_TEST.md). This diagnostic
+does not require power sensing or change workstation availability.
+
+Fingerprint update: the student check-in screen now uses the central ESP32's
+AS608 scanner instead of student ID entry. Templates stay in the sensor;
+Firestore holds the student/slot link and application records. See
+[fingerprint enrollment and rollout](firmware/FINGERPRINT_SETUP.md). Deploy the
+updated API, install the updated APK and upload the updated controller together.
+The standalone sensor test has been reported working by the user; the complete
+new scan-to-tablet flow still needs physical validation after rollout.
+
 Cloud migration: [Render setup](server/RENDER_SETUP.md) and
 [outbound ESP32 protocol](docs/CLOUD_CONTROLLER_API.md). Cloud-mode server and
 app changes are implemented and locally tested. Render origin
@@ -17,24 +38,21 @@ unnecessary. Node discovery uses local mDNS between the ESP32 boards.
 The original LAN operating instructions below still apply to LAN mode.
 
 Android tablet laboratory-management prototype. Package: `com.comlab.kiosk`.
-Current debug APK: [ComLab-Cloud-build13.apk](build/app/outputs/flutter-apk/ComLab-Cloud-build13.apk)
-(version 1.0.0, build 13, configured for your ComLab Firebase Android registration).
+Current debug APK: [ComLab-Node-Test-build15.apk](build/app/outputs/flutter-apk/ComLab-Node-Test-build15.apk)
+(version 1.0.0, build 15, configured for your ComLab Firebase Android registration).
 Minimum Android 7 / API 24. Install over the earlier setup-only build to retain
 settings. Firebase values are in the ignored local `config/firebase.json`;
 server credentials are never included in the app.
 The student interface follows the supplied cream, navy and teal reference:
-offline vector lab artwork, an editable student-ID field with numeric keypad,
-check-in / session lookup, a three-step footer, and selectable workstation cards.
+offline vector lab artwork, fingerprint check-in / session lookup, a three-step
+footer, and selectable workstation cards.
 Availability counts come from fetched backend records; unqueried counts show a dash.
 Unavailable PCs and stale status cannot be confirmed. Check-in and PC selection
-use fixed tablet layouts without page scrolling. The keypad fits the available
-height; all five PC cards and the confirmation bar stay visible. Numeric entry
-keeps the system keyboard hidden; the keyboard button enables letters/symbols
-with a compact input layout while that keyboard is open.
-Short tablet windows use a condensed check-in form to preserve readable keypad
-rows; validation includes the U24 Pro's 240-dpi display and Android system bars.
+use fixed tablet layouts without page scrolling. All five PC cards and the
+confirmation bar stay visible. Fingerprint check-in needs no keyboard.
+Validation includes the U24 Pro's 240-dpi display and Android system bars.
 Student request failures appear under **View error** in the header, preserving
-keypad/card height. The trusted API is fixed to `https://comlab-api.onrender.com`
+scan/card height. The trusted API is fixed to `https://comlab-api.onrender.com`
 in `LabState.trustedApiUrl`; sign-in and settings have no address-entry field.
 Older saved tunnel addresses are ignored on upgrade. HTTPS trust checks and
 Firebase account approval are still required. Changing the origin requires
@@ -49,8 +67,9 @@ use eSURSECO's Firebase project, `.env`, API, or deployment configuration.
 
 Flutter / Material 3 uses ChangeNotifier for application state. Identification,
 storage, private persistence and device transport have separate interfaces in
-`lib/core/contracts.dart`. Replace `StudentIdIdentification` for AS608 input and
-`LabRepository` for a future Orange Pi service. File transfer and backup are
+`lib/core/contracts.dart`. AS608 matches now reach the app through authenticated
+cloud scan requests. `StudentIdIdentification` normalizes administrator record
+IDs only. Replace `LabRepository` for a future Orange Pi service. File transfer and backup are
 future modules; no inactive controls are displayed.
 
 The app signs in to **real Firebase Authentication** and calls the trusted Node
@@ -61,7 +80,7 @@ the committed power command directly to the controller with its pairing token.
 The server independently checks controller results; tablet claims cannot mark
 a PC as started. No Firebase emulator endpoints are used or accepted.
 
-**Why a trusted API:** a temporary ID-entry kiosk cannot safely enumerate student
+**Why a trusted API:** a student kiosk cannot safely enumerate student
 records or be trusted to enforce privileged transitions itself. All direct
 Firestore reads/writes are denied, including to mobile administrators. The
 server is the only writer and validates roles, inputs and transitions. The rules
@@ -212,12 +231,11 @@ not against interception on this prototype HTTP connection.
 
 ## Behavior and safety boundaries
 
-* Exact registered IDs identify records; they **do not verify the person**. A
-  kiosk may look up one record at a time (rate limited), view its active session,
-  report issues or explicitly check out. Guessable IDs remain vulnerable to
-  impersonation and limited enumeration. Supervise the kiosk; fingerprints or
-  another verified factor are future work. There is no automatic checkout on
-  repeated entry.
+* Student mode uses short-lived, account-bound AS608 scan requests. The API
+  resolves authenticated sensor matches through unique slot links in Firestore.
+  Kiosk reservations, issue reports and checkout require a current match;
+  student-ID lookup is administrator-only. Keep enrollment supervised and slot
+  mappings accurate. Repeated scanning does not automatically check anyone out.
 * `activeStudents/{studentId}` and each PC's `sessionId` are checked/written
   together with the session and command in a server transaction. Deterministic
   operation/session/command IDs and a tap guard prevent duplicate allocation.
@@ -268,9 +286,10 @@ read-only restart recovery, tap guards, and setup/tablet layouts.
 Before a supervised pilot, use real provisioned test accounts and verify two
 tablets racing for one PC, loss of cloud access before and after commit,
 controller restart/deduplication, mapping mismatches, lost acknowledgments,
-student/admin sign-out, role revocation, and actual power sensing. No firmware,
-Windows monitoring agent, AS608 scanner or Orange Pi is supplied. No hardware
-integration or live Firebase end-to-end behavior is claimed as tested.
+student/admin sign-out, role revocation, fingerprint enrollment/mapping, and
+actual power sensing. ESP32 firmware and AS608 integration source are supplied;
+no Windows monitoring agent or Orange Pi service is supplied. The new complete
+fingerprint/cloud/tablet flow is not yet claimed as physically tested.
 
 This prototype lists full administrative collections and filters history on the
 trusted server. It is appropriate for a small laboratory, not a large campus.

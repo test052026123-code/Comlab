@@ -1,8 +1,8 @@
 /*
- * ComLab workstation node: authenticated Wi-Fi + USB relay bench test.
+ * ComLab workstation node: authenticated Wi-Fi + USB/app relay bench tests.
  * ESP32-WROOM DevKit V1, Arduino ESP32 3.3.7, ArduinoJson 7.
  * Manual 300ms relay pulse on GPIO23 through the confirmed 2N2222A interface.
- * Disconnect relay COM/NO from the PC while testing. No cloud relay executor.
+ * Bench pulses only, with no PC attached. No PC power command executor.
  * Requires the updated comlab_cloud controller with the matching local node key.
  */
 #include <WiFi.h>
@@ -17,6 +17,8 @@
 #else
 #include "secrets.example.h"
 #endif
+#include "RemoteBench.h"
+#include "PowerSense.h"
 
 static WiFiUDP nodeUdp;
 static IPAddress controllerIp;
@@ -49,7 +51,8 @@ static void receiveAcknowledgements() {
     if (body["protocolVersion"] != 1 || body["nodeId"].as<String>() != COMLAB_NODE_ID ||
         body["bootId"].as<String>() != nodeBootId || body["ackSequence"].as<uint32_t>() != sequence) continue;
     lastAckMs = millis();
-    Serial.printf("[Node %s / %s] Controller acknowledged heartbeat. PC power: unknown. Automatic power control disabled.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID);
+    RemoteBench::accept(body["benchCommand"].as<JsonObjectConst>());
+    Serial.printf("[Node %s / %s] Controller acknowledged heartbeat. PC power: %s. Automatic power control disabled.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID, PowerSense::state());
   }
 }
 
@@ -69,7 +72,8 @@ static void reportHeartbeat() {
   body["workstationId"] = COMLAB_WORKSTATION_ID; body["bootId"] = nodeBootId;
   body["sequence"] = sequence; body["uptimeMs"] = millis();
   body["sampledAtMs"] = static_cast<int64_t>(time(nullptr)) * 1000;
-  body["power"] = "unknown"; body["reachability"] = "unknown"; body["input"] = "unknown";
+  body["power"] = PowerSense::state(); body["reachability"] = "unknown"; body["input"] = "unknown";
+  RemoteBench::addReport(body);
   String raw; serializeJson(body, raw);
   const String packet = nodePacket(COMLAB_NODE_KEY, NODE_REPORT_DOMAIN, raw);
   if (packet.isEmpty()) return;
@@ -82,6 +86,8 @@ static void reportHeartbeat() {
 void setup() {
   Serial.begin(115200); delay(200);
   RelayBench::begin();
+  RemoteBench::begin();
+  PowerSense::begin();
   configured = strlen(COMLAB_NODE_WIFI_SSID) > 0 && nodeHex(String(COMLAB_NODE_KEY), 64) &&
     String(COMLAB_NODE_ID).length() > 0 && String(COMLAB_WORKSTATION_ID).length() > 0;
   if (!configured) {
@@ -100,6 +106,8 @@ void setup() {
 
 void loop() {
   RelayBench::poll();
+  RemoteBench::poll();
+  PowerSense::poll();
   if (!configured) { delay(100); return; }
   const uint32_t now = millis();
   if (WiFi.status() != WL_CONNECTED) {

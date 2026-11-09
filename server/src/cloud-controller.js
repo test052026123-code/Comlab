@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { Fault, requireThat } from './domain.js';
-import { fingerprintResultSchema } from './fingerprints.js';
+import { fingerprintResultSchema, fingerprintProgressSchema, fingerprintCapacitySchema } from './fingerprints.js';
 import { benchResultSchema } from './relay-bench.js';
 
 const stamp = () => FieldValue.serverTimestamp();
@@ -14,6 +14,7 @@ export const syncSchema = z.object({
   sampledAt: z.iso.datetime(), uptimeMs: z.number().int().nonnegative(), firmwareVersion: z.string().min(1).max(64),
   capabilities: z.array(z.literal('power_on')).max(1),
   fingerprintResult: fingerprintResultSchema.optional(),
+  fingerprintProgress: fingerprintProgressSchema.optional(), fingerprintCapacity: fingerprintCapacitySchema.optional(),
   benchSupported: z.boolean().optional(), benchNodes: z.array(nodeId).max(5).optional(),
   benchResult: benchResultSchema.optional(),
   nodes: z.array(z.object({ workstationId: pcId, nodeId,

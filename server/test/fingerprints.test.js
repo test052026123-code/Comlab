@@ -90,3 +90,51 @@ test('unlinked, inactive and failed scans do not identify a student; proofs expi
   assert.equal(fingerprintResultSchema.safeParse({ requestId, state: 'matched', slot: null }).success, false);
   assert.equal(fingerprintResultSchema.safeParse({ requestId, state: 'error', slot: 1 }).success, false);
 });
+
+test('admin enrollment picks a free slot, reports progress and links on success', async () => {
+  const { scanner, actor, admin, student, db } = fixture();
+  await scanner.saveStudent(admin, 'S1', student, true);
+  const { fingerprintSlot, ...profile } = student;
+  await scanner.saveStudent(admin, 'S2', profile, true);
+  const requestId = randomUUID();
+  await assert.rejects(scanner.startEnroll(admin, requestId, 'S2'), { status: 409 }); // capacity unknown
+  await scanner.deviceExchange(null, null, 162);
+  await assert.rejects(scanner.startEnroll(actor, requestId, 'S2'), { status: 403 });
+  await assert.rejects(scanner.startEnroll(admin, randomUUID(), 'MISSING'), { status: 404 });
+  const started = await scanner.startEnroll(admin, requestId, 'S2');
+  assert.deepEqual([started.state, started.slot, started.step], ['waiting', 2, 'place_first']);
+  const wire = (await scanner.deviceExchange()).fingerprintRequest;
+  assert.deepEqual([wire.mode, wire.slot], ['enroll', 2]);
+  await assert.rejects(scanner.start(actor, randomUUID()), { status: 409 }); // shared scanner
+  await scanner.deviceExchange(null, { requestId, step: 'lift' });
+  assert.equal((await scanner.read(admin, requestId)).step, 'lift');
+  await scanner.deviceExchange({ requestId, state: 'enrolled', slot: 3 }); // wrong slot
+  assert.equal((await scanner.read(admin, requestId)).state, 'error');
+  const second = randomUUID();
+  await scanner.startEnroll(admin, second, 'S2');
+  await scanner.deviceExchange({ requestId: second, state: 'enrolled', slot: 2 });
+  assert.equal((await scanner.read(admin, second)).state, 'enrolled');
+  assert.equal(db.docs.get('students/S2').fingerprintSlot, 2);
+  assert.equal(db.docs.get('fingerprintMappings/CENTRAL-2').studentId, 'S2');
+  // Re-enrolling reuses the student's own slot.
+  assert.equal((await scanner.startEnroll(admin, randomUUID(), 'S1')).slot, 1);
+});
+
+test('enrollment reports duplicates and mismatches without linking', async () => {
+  const { scanner, admin, student, db } = fixture();
+  await scanner.saveStudent(admin, 'S1', student, true);
+  const { fingerprintSlot, ...profile } = student;
+  await scanner.saveStudent(admin, 'S2', profile, true);
+  await scanner.deviceExchange(null, null, 162);
+  const dup = randomUUID();
+  await scanner.startEnroll(admin, dup, 'S2');
+  await scanner.deviceExchange({ requestId: dup, state: 'duplicate', slot: 1 });
+  const r = await scanner.read(admin, dup);
+  assert.deepEqual([r.state, r.duplicateStudentId], ['duplicate', 'S1']);
+  const mis = randomUUID();
+  await scanner.startEnroll(admin, mis, 'S2');
+  await scanner.deviceExchange({ requestId: mis, state: 'mismatch', slot: null });
+  assert.equal((await scanner.read(admin, mis)).state, 'mismatch');
+  assert.equal(db.docs.get('students/S2').fingerprintSlot ?? null, null);
+  assert.throws(() => fingerprintResultSchema.parse({ requestId: mis, state: 'enrolled', slot: null }));
+});

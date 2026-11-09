@@ -6,7 +6,7 @@
 // GPIO23 -> 1k -> 2N2222A base; emitter -> GND; collector -> IN1.
 // Add a 10k base/emitter pull-down. Confirmed module supply: 5V.
 // HIGH activates the transistor and the module's active-LOW input.
-// This USB bench test does not accept cloud power commands.
+// USB tests and authenticated remote bench pulses share the same timer.
 namespace RelayBench {
 static const uint8_t PIN = 23;
 static const uint32_t PULSE_MS = 300, COOLDOWN_MS = 3000, ARM_WINDOW_MS = 60000;
@@ -18,6 +18,28 @@ static int64_t pulseDeadlineUs = 0, armDeadlineUs = 0;
 static uint32_t lastTestAt = 0;
 static char input[32];
 static size_t inputLength = 0;
+static volatile int remoteProgress = 0; // 1 queued, 2 started, 3 timed release, 4 canceled.
+static void (*statusHook)() = nullptr;
+
+static bool remotePulse() {
+  const uint32_t now = millis();
+  bool accepted = false;
+  portENTER_CRITICAL(&mux);
+  if (ready && !active && !pending && (!tested || now - lastTestAt >= COOLDOWN_MS)) {
+    armed = true; expired = false;
+    armDeadlineUs = esp_timer_get_time() + 1000000;
+    remoteProgress = 1; pending = true; tested = true; lastTestAt = now; accepted = true;
+  }
+  portEXIT_CRITICAL(&mux);
+  return accepted;
+}
+
+static int remoteStatus() {
+  portENTER_CRITICAL(&mux);
+  const int status = remoteProgress;
+  portEXIT_CRITICAL(&mux);
+  return status;
+}
 
 static void timerTick(void*) {
   // This task owns every HIGH transition. It also ends pulses while the main
@@ -26,12 +48,17 @@ static void timerTick(void*) {
   portENTER_CRITICAL(&mux);
   if (armed && now >= armDeadlineUs) {
     armed = false; pending = false; expired = true;
+    if (remoteProgress == 1 || remoteProgress == 2) remoteProgress = 4;
   }
   if (!armed || (active && now >= pulseDeadlineUs)) {
-    if (active) { gpio_set_level(static_cast<gpio_num_t>(PIN), 0); active = false; ended = true; }
+    if (active) {
+      gpio_set_level(static_cast<gpio_num_t>(PIN), 0); active = false; ended = true;
+      if (remoteProgress == 2) remoteProgress = armed ? 3 : 4;
+    }
     pending = false;
   } else if (pending && !active) {
     pending = false; active = true;
+    if (remoteProgress == 1) remoteProgress = 2;
     pulseDeadlineUs = now + static_cast<int64_t>(PULSE_MS) * 1000;
     gpio_set_level(static_cast<gpio_num_t>(PIN), 1);
   }
@@ -41,6 +68,7 @@ static void timerTick(void*) {
 static void off() {
   portENTER_CRITICAL(&mux);
   armed = false; pending = false; active = false; ended = false; expired = false;
+  if (remoteProgress == 1 || remoteProgress == 2) remoteProgress = 4;
   gpio_set_level(static_cast<gpio_num_t>(PIN), 0);
   portEXIT_CRITICAL(&mux);
 }
@@ -69,6 +97,7 @@ static void command(String value) {
   if (value == "OFF") { off(); Serial.println("[Relay] OFF and disarmed."); return; }
   if (value == "STATUS") {
     Serial.printf("[Relay] GPIO23: %s; test: %s. PC power: unknown.\n", active ? "HIGH (pulse active)" : "LOW (off)", armed ? "armed" : "disarmed");
+    if (statusHook) statusHook();
     return;
   }
   if (value == "ARM") {

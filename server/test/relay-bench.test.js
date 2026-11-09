@@ -77,3 +77,13 @@ test('one pending test wins concurrent requests and expires without delayed disp
   fresh();
   assert.equal((await bench.start(actor, body())).state, 'pending');
 });
+
+test('a late signed node completion resolves an expired delivery without redispatch', async () => {
+  const { bench, actor, body, clock } = fixture(), request = body();
+  await bench.start(actor, request);
+  clock.now += 31000;
+  assert.equal((await bench.read(actor, request.commandId)).state, 'unknown');
+  const reply = await bench.deviceExchange({ ...request, nodeId: 'NODE-01', state: 'pulse_finished' }, true);
+  assert.equal(reply.benchCommand, null);
+  assert.equal((await bench.read(actor, request.commandId)).state, 'pulse_finished');
+});

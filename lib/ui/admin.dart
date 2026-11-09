@@ -8,6 +8,8 @@ import '../core/lab_state.dart';
 import 'widgets.dart';
 import 'student_editor.dart';
 import 'workstation_editor.dart';
+import 'relay_test.dart';
+import 'fingerprint_enroll.dart';
 
 class AdminData extends ChangeNotifier {
   AdminData(this.lab);
@@ -363,14 +365,39 @@ class _AdminScreenState extends State<AdminScreen> {
               ),
               title: Text('${s['name']}'),
               subtitle: Text(
-                '${s['id']} • ${s['section']} • ${s['active'] == true ? 'Active' : 'Inactive'}',
+                '${s['id']} • ${s['section']} • ${s['active'] == true ? 'Active' : 'Inactive'} • '
+                '${s['fingerprintSlot'] == null ? 'No fingerprint' : 'Fingerprint slot ${s['fingerprintSlot']}'}',
               ),
-              trailing: const Icon(Icons.edit_outlined),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Enroll fingerprint',
+                    icon: const Icon(Icons.fingerprint),
+                    onPressed: data.stale || widget.state.busy
+                        ? null
+                        : () => _enroll(s),
+                  ),
+                  const Icon(Icons.edit_outlined),
+                ],
+              ),
               onTap: () => _studentEditor(s),
             ),
           ),
         ),
   ]);
+  Future<void> _enroll(Json s) async {
+    final enrolled = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => FingerprintEnrollDialog(
+        repository: widget.state.repository,
+        student: s,
+      ),
+    );
+    if (mounted && enrolled == true) await data.load();
+  }
+
   Future<void> _studentEditor([Json? s]) async {
     final values = await showDialog<Json>(
       context: context,
@@ -409,7 +436,28 @@ class _AdminScreenState extends State<AdminScreen> {
           .map(
             (p) => SizedBox(
               width: 240,
-              child: PcCard(pc: p, admin: true, onTap: () => _pcEditor(p)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PcCard(pc: p, admin: true, onTap: () => _pcEditor(p)),
+                  TextButton.icon(
+                    onPressed:
+                        data.stale ||
+                            widget.state.busy ||
+                            p['sessionId'] != null
+                        ? null
+                        : () => showDialog<void>(
+                            context: context,
+                            builder: (_) => RelayTestDialog(
+                              repository: widget.state.repository,
+                              pc: p,
+                            ),
+                          ),
+                    icon: const Icon(Icons.electrical_services_outlined),
+                    label: const Text('Test node relay'),
+                  ),
+                ],
+              ),
             ),
           )
           .toList(),

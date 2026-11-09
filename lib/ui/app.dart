@@ -190,7 +190,7 @@ class LabShell extends StatelessWidget {
               ),
               const SizedBox(width: 20),
               const Text(
-                'Student ID mode',
+                'Fingerprint mode',
                 style: TextStyle(color: Color(0xFF71758A), fontSize: 12),
               ),
               const SizedBox(width: 18),
@@ -256,7 +256,7 @@ class LabShell extends StatelessWidget {
   Widget _confirmation() => _page([
     titleBlock(
       'Confirm your record',
-      'Student ID — temporary. ID entry does not verify who you are.',
+      'Your fingerprint matched this registered student record.',
     ),
     Card(
       child: Padding(
@@ -356,7 +356,7 @@ class LabShell extends StatelessWidget {
     return _page([
       titleBlock(
         'Your laboratory session',
-        'Repeated ID entry shows this session. Checkout requires confirmation.',
+        'Scan your fingerprint to find this session. Checkout requires confirmation.',
       ),
       Card(
         child: Padding(
@@ -389,9 +389,7 @@ class LabShell extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 20),
-      const Notice(
-        'ID entry does not verify identity. Report an incorrect assignment to staff.',
-      ),
+      const Notice('Report an incorrect assignment to staff.'),
       action(
         'Check out',
         state.busy

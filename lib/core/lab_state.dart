@@ -13,6 +13,7 @@ class LabState extends ChangeNotifier {
   final LabRepository? repositoryOverride;
   final DeviceGateway? devicesOverride;
   final PrivateStore store;
+  // Record IDs remain available only in administrator student management.
   final Identification identification = StudentIdIdentification();
   FirebaseAuth? kioskAuth, adminAuth;
   bool ready = false, busy = false, admin = false, cloudFresh = false;
@@ -25,6 +26,10 @@ class LabState extends ChangeNotifier {
   Json? student, session, operation, pending;
   List<Json> pcs = [];
   Timer? _welcome, _poll;
+  Timer? _scanPoll;
+  String? scanRequestId;
+  bool fingerprintScanning = false;
+  int _scanGeneration = 0;
   LabRepository get repository =>
       repositoryOverride ??
       CloudRepository(
@@ -109,6 +114,10 @@ class LabState extends ChangeNotifier {
   }
 
   void navigate(String destination) {
+    if ((destination != 'welcome' && fingerprintScanning) ||
+        ['setup', 'login', 'admin'].contains(destination)) {
+      stopFingerprintScan();
+    }
     _welcome?.cancel();
     _poll?.cancel();
     screen = destination;
@@ -188,6 +197,7 @@ class LabState extends ChangeNotifier {
   }
 
   Future<void> leaveAdmin() async {
+    stopFingerprintScan();
     await adminAuth?.signOut();
     admin = false;
     student = null;
@@ -200,6 +210,7 @@ class LabState extends ChangeNotifier {
   }
 
   void resetStudent() {
+    stopFingerprintScan();
     _welcome?.cancel();
     _poll?.cancel();
     student = null;
@@ -233,17 +244,86 @@ class LabState extends ChangeNotifier {
     });
   }
 
-  Future<void> lookup(String input) async {
+  void stopFingerprintScan() {
+    _scanGeneration++;
+    _scanPoll?.cancel();
+    final id = scanRequestId;
+    scanRequestId = null;
+    if (fingerprintScanning && id != null) {
+      unawaited(
+        repository
+            .post('/fingerprint/requests/$id/cancel', {})
+            .catchError((_) => <String, dynamic>{}),
+      );
+    }
+    fingerprintScanning = false;
+  }
+
+  Future<void> startFingerprintScan() async {
     if (pending != null) {
       throw ApiFailure(
         'A saved operation needs reconciliation before another check-in. Use Recover pending operation.',
       );
     }
-    final id = identification.normalize(input);
-    final result = await repository.post('/lookup', {'studentId': id});
+    stopFingerprintScan();
+    final generation = _scanGeneration;
+    final id = const Uuid().v4();
+    scanRequestId = id;
+    fingerprintScanning = true;
+    notifyListeners();
+    try {
+      final result = await repository.post('/fingerprint/requests', {
+        'requestId': id,
+      });
+      if (generation != _scanGeneration) return;
+      await _handleFingerprintResult(result, generation);
+      if (!fingerprintScanning) return;
+      _scanPoll = Timer.periodic(const Duration(seconds: 2), (_) {
+        if (!busy && fingerprintScanning) {
+          unawaited(
+            run(() async {
+              try {
+                final result = await repository.get(
+                  '/fingerprint/requests/$id',
+                );
+                if (generation == _scanGeneration) {
+                  await _handleFingerprintResult(result, generation);
+                }
+              } catch (_) {
+                if (generation == _scanGeneration) stopFingerprintScan();
+                rethrow;
+              }
+            }),
+          );
+        }
+      });
+    } catch (_) {
+      if (generation == _scanGeneration) stopFingerprintScan();
+      rethrow;
+    }
+  }
+
+  Future<void> _handleFingerprintResult(Json result, int generation) async {
+    if (result['state'] == 'waiting') return;
+    _scanPoll?.cancel();
+    fingerprintScanning = false;
+    if (result['state'] != 'matched') {
+      scanRequestId = null;
+      throw ApiFailure(switch (result['state']) {
+        'no_match' =>
+          'Fingerprint not recognized. Try again or ask staff to enroll you.',
+        'unlinked' =>
+          'This fingerprint is not linked to a student. Ask an administrator.',
+        'expired' =>
+          'Scan timed out. Check the controller connection and try again.',
+        'canceled' => 'Scan canceled. Tap Scan fingerprint to try again.',
+        _ => 'The scanner could not read your finger. Lift it and try again.',
+      });
+    }
+    final settings = await repository.get('/settings');
+    if (generation != _scanGeneration) return;
     student = result['student'] as Json;
     session = result['session'] as Json?;
-    final settings = await repository.get('/settings');
     welcomeSeconds = (settings['welcomeTimeoutSeconds'] as num).toInt();
     screen = session == null ? 'confirm' : 'session';
     scheduleReset();
@@ -278,6 +358,7 @@ class LabState extends ChangeNotifier {
       'operationId': const Uuid().v4(),
       'studentId': student!['id'],
       'workstationId': pc,
+      if (scanRequestId != null) 'scanRequestId': scanRequestId,
     };
     pending = request;
     await store.write('pending', jsonEncode(request));
@@ -373,6 +454,7 @@ class LabState extends ChangeNotifier {
   Future<void> checkout({String? reason}) async {
     await repository.post('/sessions/${session!['id']}/close', {
       'reason': reason,
+      if (scanRequestId != null) 'scanRequestId': scanRequestId,
     });
     await clearPending();
     resetStudent();
@@ -382,6 +464,7 @@ class LabState extends ChangeNotifier {
     await repository.post('/issues', {
       'sessionId': session!['id'],
       'description': description,
+      if (scanRequestId != null) 'scanRequestId': scanRequestId,
     });
     screen = 'session';
     scheduleReset();
@@ -413,6 +496,7 @@ class LabState extends ChangeNotifier {
 
   @override
   void dispose() {
+    stopFingerprintScan();
     _welcome?.cancel();
     _poll?.cancel();
     super.dispose();

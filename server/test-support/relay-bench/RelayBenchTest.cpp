@@ -1,4 +1,5 @@
 #include "RelayBench.h"
+#include "BenchPolicy.h"
 
 // Freestanding host DLL: no runtime or hardware dependencies.
 extern "C" void* memset(void* destination, int value, size_t length) {
@@ -23,6 +24,7 @@ static void reset() {
   RelayBench::pending = RelayBench::ready = RelayBench::tested = RelayBench::inputOverflow = false;
   RelayBench::pulseDeadlineUs = RelayBench::armDeadlineUs = 0;
   RelayBench::lastTestAt = 0; RelayBench::inputLength = 0;
+  RelayBench::remoteProgress = 0;
 }
 #define CHECK(condition) if (!(condition)) return __LINE__
 extern "C" __declspec(dllexport) int runRelayBenchTests() {
@@ -70,5 +72,30 @@ extern "C" __declspec(dllexport) int runRelayBenchTests() {
   FakeBoard::serialInput = "1234567890123456789012345678901234567890ARM\nTEST\n";
   RelayBench::poll(); FakeBoard::advance(1000000);
   CHECK(FakeBoard::risingEdges == 0 && !RelayBench::armed);
+
+  // Remote bench commands need no USB ARM, but retain the independent 300ms release.
+  reset(); RelayBench::begin();
+  CHECK(RelayBench::remotePulse());
+  CHECK(RelayBench::remoteStatus() == 1);
+  CHECK(!RelayBench::remotePulse());
+  FakeBoard::advance(5000);
+  CHECK(FakeBoard::risingEdges == 1 && RelayBench::remoteStatus() == 2);
+  FakeBoard::advance(300000);
+  CHECK(FakeBoard::level == 0 && RelayBench::remoteStatus() == 3);
+  CHECK(!RelayBench::remotePulse());
+  FakeBoard::advance(3000000); CHECK(RelayBench::remotePulse());
+  RelayBench::off(); FakeBoard::advance(1000000);
+  CHECK(FakeBoard::risingEdges == 1 && RelayBench::remoteStatus() == 4);
+  reset(); FakeBoard::failCreate = true; RelayBench::begin();
+  CHECK(!RelayBench::remotePulse());
+  const int64_t now = 1800000000000LL;
+  CHECK(benchTimeValid(now, now, now + 30000));
+  CHECK(!benchTimeValid(now, now + 2001, now + 30000));
+  CHECK(!benchTimeValid(now, now - 31000, now - 1000));
+  CHECK(!benchTimeValid(now, now, now + 60000));
+  CHECK(!benchTimeValid(0, 0, 30000));
+  CHECK(!benchNewer(now, now));
+  CHECK(!benchNewer(now - 1, now));
+  CHECK(benchNewer(now + 1, now));
   return 0;
 }

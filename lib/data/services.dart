@@ -95,7 +95,7 @@ class CloudRepository implements LabRepository {
       return r;
     } on TimeoutException {
       throw ApiFailure(
-        method == 'GET' || path == '/lookup'
+        method == 'GET' || path == '/lookup' || path.startsWith('/fingerprint/')
             ? 'The cloud server took too long to respond. It may be starting up. Wait a moment, then try again.'
             : 'Cloud request timed out. The result may be unknown; reconcile the saved operation.',
       );

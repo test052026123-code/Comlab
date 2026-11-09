@@ -1,7 +1,7 @@
 /*
  * ComLab ESP32-WROOM DevKit V1 - outbound cloud + signed node discovery.
  * Arduino ESP32 core 3.3.7; ArduinoJson 7.
- * No GPIO, relay execution, fabricated nodes or Firebase Admin credentials.
+ * Routes signed relay bench tests; no PC power commands or fabricated nodes.
  * HTTPS validates hostname and the SDK's public CA certificate bundle.
  */
 #include <WiFi.h>
@@ -11,6 +11,7 @@
 #include <esp_system.h>
 #include <time.h>
 #include "NodeReceiver.h"
+#include "FingerprintReader.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -18,7 +19,7 @@
 #include "secrets.example.h"
 #endif
 
-static const char* FIRMWARE_VERSION = "comlab-cloud-node-discovery-2";
+static const char* FIRMWARE_VERSION = "comlab-cloud-enroll-5";
 static const uint32_t SYNC_INTERVAL_MS = 5000;
 static const uint32_t MAX_BACKOFF_MS = 30000;
 static String bootId, pendingPayload;
@@ -81,6 +82,8 @@ static void buildPayload() {
   body["sequence"] = sequence;
   body["uptimeMs"] = millis(); body["firmwareVersion"] = FIRMWARE_VERSION;
   body["capabilities"].to<JsonArray>();
+  addFingerprintResult(body);
+  addControllerBench(body);
   int64_t oldestSampleMs;
   JsonArray nodes = body["nodes"].to<JsonArray>();
   addNodeObservations(nodes, oldestSampleMs);
@@ -138,6 +141,8 @@ static bool syncWithCloud() {
     }
   }
   rejectCommands(body["commands"].as<JsonArrayConst>());
+  handleFingerprintResponse(body);
+  handleControllerBench(body);
   ++sequence; pendingPayload.clear();
   Serial.printf("[Cloud] Authenticated HTTPS sync acknowledged; %u observed workstation nodes reported. Power control disabled.\n", static_cast<unsigned>(reportedNodeCount));
   return true;
@@ -156,6 +161,7 @@ void setup() {
     return;
   }
   bootId = newBootId();
+  beginFingerprintReader();
   WiFi.mode(WIFI_STA); WiFi.setHostname("comlab-controller"); WiFi.setAutoReconnect(true);
   WiFi.begin(COMLAB_WIFI_SSID, COMLAB_WIFI_PASSWORD);
   nextWifiMs = millis() + 10000;
@@ -165,7 +171,9 @@ void setup() {
 
 void loop() {
   if (!configured) { delay(100); return; }
+  pollBenchDiagnostics();
   pollNodeHeartbeats();
+  pollFingerprintReader();
   const uint32_t now = millis();
   if (WiFi.status() != WL_CONNECTED) {
     if (static_cast<int32_t>(now - nextWifiMs) >= 0) { WiFi.reconnect(); nextWifiMs = now + 10000; }
@@ -173,6 +181,8 @@ void loop() {
   }
   // Certificate verification is never bypassed, including before the clock syncs.
   if (time(nullptr) < 1700000000) { delay(20); return; }
+  // Enrollment steps and results sync immediately so the admin screen keeps up.
+  if (fingerprintSyncNow) { fingerprintSyncNow = false; nextSyncMs = now; }
   if (static_cast<int32_t>(now - nextSyncMs) >= 0) {
     pollNodeHeartbeats();
     if (syncWithCloud()) backoffMs = SYNC_INTERVAL_MS;

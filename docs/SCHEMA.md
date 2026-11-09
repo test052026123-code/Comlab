@@ -1,5 +1,21 @@
 # Firestore schema and authorization
 
+Remote relay diagnostics use `relayBenchTests/{commandUuid}` with target IDs,
+service/controller ownership, pending/result state, issue/expiry times, and
+`relayBenchControllers/{controllerId}` with the current command pointer. These
+are separate from production power commands and sessions. Only administrator
+API accounts can create/read diagnostics; authenticated controllers can report
+their node's result. No direct client Firestore writes are allowed.
+
+Fingerprint check-in adds `fingerprintMappings/{controllerId}-{slot}` with a
+unique `studentId`, `fingerprintScanners/{controllerId}` with the current
+request UUID, and `fingerprintRequests/{uuid}` with controller/account ownership,
+state and `expiresAt`. Completed matches include the slot and linked student ID.
+Student records add nullable `fingerprintSlot`. Templates/images remain in the
+AS608; no template or image upload is implemented. Expiry is checked by the API;
+automatic Firestore TTL cleanup is not configured. See
+[AS608 setup](../firmware/FINGERPRINT_SETUP.md).
+
 Cloud-mode additions: `controllerSnapshots/{controllerId}` stores authenticated
 telemetry, last sequence/digest and cached sync reply;
 `controllerBoots/{controllerId}-{bootUuid}` prevents retired boot replay;
@@ -40,7 +56,7 @@ and independently probe the controller. History dates are Philippine time.
 ## Permission boundary
 
 * Unauthenticated, anonymous, disabled, unapproved and revoked users: no API data.
-* Approved kiosk: exact-ID lookup (15/minute/IP), safe PC status projection,
+* Approved kiosk: fingerprint scan requests (15/minute/IP), safe PC status projection,
   reservation, own operation lookup/reconciliation, explicit active-session
   checkout and issue creation, nonsecret policy read, cloud health read.
 * Enabled administrator: the above plus student and workstation management,
@@ -51,6 +67,7 @@ and independently probe the controller. History dates are Philippine time.
   SDK behavior. Unit tests cover the server's transition policy; a live-project
   acceptance pass is still needed.
 
-Kiosk checkout/reporting authorizes the device, not the human. The session ID
-obtained through exact ID lookup enables these actions; temporary ID entry can
-be impersonated. Do not add public list queries for students to work around this.
+Kiosk reservation, checkout and reporting require a matched fingerprint request
+owned by that account and linked to the session's student. Results expire after
+120 seconds. Student-ID lookup is administrator-only. Enrollment and slot
+linking remain supervised administrative operations.

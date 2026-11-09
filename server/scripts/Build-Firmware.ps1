@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('controller', 'node')]
+    [ValidateSet('controller', 'node', 'fingerprint-test', 'fingerprint-enroll')]
     [string]$Target = 'controller',
     [switch]$CheckOnly
 )
@@ -7,12 +7,21 @@ $ErrorActionPreference = 'Stop'
 $comlabRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $comlabCli = Join-Path $env:ProgramFiles 'Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe'
 if (-not (Test-Path -LiteralPath $comlabCli)) { throw 'Arduino CLI was not found in the installed Arduino IDE folder.' }
-$comlabSketchName = if ($Target -eq 'controller') { 'comlab_cloud' } else { 'comlab_node' }
-$comlabOutputName = if ($Target -eq 'controller') { 'cloud-firmware-build' } else { 'node-firmware-build' }
+$comlabSketchName = switch ($Target) {
+    'controller' { 'comlab_cloud' }
+    'node' { 'comlab_node' }
+    'fingerprint-test' { 'as608_test' }
+    'fingerprint-enroll' { 'as608_enroll' }
+}
+$comlabOutputName = switch ($Target) {
+    'controller' { 'cloud-firmware-build' }
+    'node' { 'node-firmware-build' }
+    default { "$Target-build" }
+}
 $comlabSketch = Join-Path $comlabRoot "firmware\$comlabSketchName"
 $comlabOutput = Join-Path $comlabRoot "server\.local\$comlabOutputName"
 $comlabLog = Join-Path $comlabRoot "server\.local\$comlabOutputName.log"
-if (-not (Test-Path -LiteralPath (Join-Path $comlabSketch 'secrets.h'))) { throw 'Configure the local sketch secrets.h first.' }
+if ($Target -in @('controller', 'node') -and -not (Test-Path -LiteralPath (Join-Path $comlabSketch 'secrets.h'))) { throw 'Configure the local sketch secrets.h first.' }
 if ($CheckOnly) {
     Write-Output "Ready to compile $Target with --jobs 1. No compilation or upload performed."
     return

@@ -134,11 +134,11 @@ void main() {
     },
   );
   test(
-    'student identification normalizes records without claiming identity verification',
+    'administrator record IDs normalize without acting as fingerprint identification',
     () {
       final id = StudentIdIdentification();
       expect(id.normalize(' ab-123 '), 'AB-123');
-      expect(id.label, 'Student ID — temporary');
+      expect(id.label, 'Student record ID');
       expect(() => id.normalize('bad/id'), throwsFormatException);
     },
   );
@@ -254,7 +254,11 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final state = LabState(store: MemoryStore())..ready = true;
       await tester.pumpWidget(ComLabApp(state: state));
-      expect(find.byKey(const ValueKey('student-id-entry')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('fingerprint-scan-button')),
+        findsOneWidget,
+      );
+      expect(find.byType(TextField), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       state.dispose();

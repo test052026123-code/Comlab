@@ -1,5 +1,64 @@
 # Local verification record
 
+## GitHub Pages migration - 2026-11-07
+
+The user selected GitHub Pages as the replacement host. The static dashboard
+in `web/admin` was built and pushed in commit `e7fcdf7` with an Actions Pages
+workflow and an exact-origin browser CORS policy for the existing Render API.
+GitHub Actions run `42275106724` successfully built and deployed it to
+`https://test052026123-code.github.io/Comlab/`. The site no longer uses the
+Sites Worker proxy. Public assets contain no student records or private keys;
+approved Firebase admin authentication is still required for lab data.
+
+All 39 server tests and the migrated desktop/mobile browser tests pass.
+The initial live API preflight still returned 401 without CORS headers, which
+means Render needs to deploy the API commit before real dashboard login works.
+
+## Browser admin dashboard - 2026-11-07
+
+Implemented a separate private Sites dashboard in `sites/comlab-admin`, reusing
+the registered ComLab Firebase Web app and existing Render API. No service-account
+or controller credentials are included. Firebase password authentication uses
+memory-only sessions; the API verifies approved admin roles on every request.
+The Worker proxy uses a fixed origin, explicit route/method allowlist, same-origin
+write checks, no caching, and manual redirects that are rejected before following.
+
+TypeScript checking and five proxy tests pass. Chrome browser checks with
+intercepted synthetic records pass for kiosk-role rejection, dashboard reads,
+student creation/editing, fingerprint linking/unlinking, single relay-test
+submission after explicit bench confirmation, stale read-only records, sign-out
+cleanup, and responsive desktop/mobile layouts. No live student mutation or
+physical relay command was sent by these tests. Public Firebase Web configuration
+accepted a negative sign-in probe (`INVALID_LOGIN_CREDENTIALS`); the actual Worker
+proxy reached Render and returned its expected 401 for an invalid bearer.
+Real administrator sign-in and live-record acceptance remain for the user.
+
+Published privately using the Sites skill as version
+`appgver_b78b96cfcbf48191b400d979aeb4d21b` from source commit
+`f5ee14f9d325600efb074bf20f8f6b130afb0415`. The native deployment returned
+`succeeded` and `https://comlab-admin-dashboard.aiken-high-8215.chatgpt.site`.
+
+## Remote relay bench control - 2026-11-07
+
+API commit `5059fcb` is live at the existing Render origin with
+`apiVersion: node-bench-2`. All 38 server tests pass; app dialog tests cover
+explicit single submission, read-only polling, the same UUID after an uncertain
+POST, and safe dismissal. Existing app tests passed except an outdated test
+finder, corrected and verified by rerunning all three relay dialog tests.
+Flutter analysis and the extended relay timer/policy host tests pass.
+
+The central and NODE-01 were compiled and uploaded with verification. The node
+was initially on COM3 and moved to COM4 after reconnecting; central is COM5.
+A backend maintenance diagnostic returned `pulse_finished` through the complete
+cloud-to-central-to-node-to-cloud path. Node serial status independently showed
+its matching command journal finished and GPIO23 LOW. No PC power status or
+workstation eligibility was changed. The first diagnostic expired without a
+node journal entry, so no pulse was inferred from that timeout.
+
+App build 15 was built as `ComLab-Node-Test-build15.apk`. After the tablet was
+reconnected, `adb install -r` succeeded, Android package inspection confirmed
+versionCode 15, and the app was launched. Existing app data was retained.
+
 ## Connection recovery and error layout - build 9
 
 The user reported an unreachable API message whose inline banner also clipped
@@ -392,3 +451,25 @@ retains application data; the old saved API origin is ignored by this build.
   firmware, physical PC node telemetry, relay execution.
 - Cloud-compatible debug APK build 10 was built successfully. It has not been
   installed on the tablet during this migration; settings are not changed.
+
+## AS608 update — 2026-11-07
+
+Local checks for fingerprint check-in: `npm test` passed all 33 server tests;
+`flutter test --no-pub --concurrency=1` passed all 35 app tests; Flutter analysis
+reported no issues. Tests cover request ownership/expiry/cancellation, late UI
+responses, unique student/slot links, inactive/unlinked students, pending-work
+guards, and tablet layouts without a student ID input.
+
+Configured debug APK `ComLab-Fingerprint-build14.apk` (versionCode 14) built
+successfully and is ready for installation with the matching API/controller.
+
+Arduino ESP32 core 3.3.7 and Adafruit Fingerprint Sensor Library 2.1.4 compiled
+the updated central controller (1,174,692 bytes flash, 52,192 bytes global RAM)
+and supervised enrollment sketch (284,096 bytes flash, 22,228 bytes global RAM).
+The controller binary checker confirmed the AS608 reader, node receiver and
+current local configuration without printing credentials. No firmware upload,
+Render deployment, live Firestore mutation, or tablet installation was performed
+for this update. The user reported the standalone sensor test working; full
+scan-to-cloud-to-tablet validation remains a rollout acceptance step.
+
+See [enrollment and storage](../firmware/FINGERPRINT_SETUP.md).

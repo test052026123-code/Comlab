@@ -1,5 +1,25 @@
 # Implemented outbound controller protocol, version 1
 
+Remote bench extension: optional sync fields `benchSupported` (boolean),
+`benchNodes` (up to five ready node IDs), and `benchResult` (command UUID,
+node/workstation IDs, state `pulse_finished`, `rejected`, or `unknown`). Replies
+add nullable `benchCommand` and `acknowledgedBench`. Administrator-only
+`POST /admin/relay-tests` creates a UUID-scoped diagnostic; `GET
+/admin/relay-tests/:id` reads its result. It requires fresh connected remote-test
+firmware and an unassigned workstation, while allowing unknown power. No power
+capability or reservation is created. See
+[remote relay test](../firmware/REMOTE_RELAY_TEST.md).
+
+AS608 extension: sync requests may include `fingerprintResult` with `requestId`
+(UUID), `state` (`matched`, `no_match`, `error`), and `slot` (integer for matched,
+otherwise null). Sync responses add nullable `fingerprintRequest` containing
+`requestId` and ISO UTC `expiresAt`, plus nullable `acknowledgedFingerprint`.
+Fingerprint results remain in the controller outbox until acknowledged. These
+request-scoped fields do not change power command behavior. See
+[AS608 setup](../firmware/FINGERPRINT_SETUP.md) for enrollment and tablet endpoints.
+The API refreshes the scan fields after each validated sync, including an exact
+retry; cached power commands and telemetry freshness retain their existing rules.
+
 Source: `server/src/cloud-controller.js`, `server/src/device-auth.js`,
 `server/src/index.js`, `firmware/comlab_cloud/comlab_cloud.ino`.
 The deployed origin passed process-health and unauthenticated guard checks;
