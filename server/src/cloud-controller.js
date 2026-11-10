@@ -35,7 +35,11 @@ export class CloudController {
   constructor(db, controllerId, { now = Date.now, telemetry = null } = {}) {
     this.db = db; this.id = controllerId; this.now = now; this.telemetry = telemetry;
   }
-  async snapshot() { return this.telemetry ? this.telemetry.read() : (await this.snapshotRef().get()).data(); }
+  async snapshot() {
+    if (!this.telemetry) return (await this.snapshotRef().get()).data();
+    const snapshot = await this.telemetry.read();
+    return snapshot?.durableBoot === true ? snapshot : null;
+  }
   snapshotRef() { return this.db.doc(`controllerSnapshots/${this.id}`); }
   queueRef(id) { return this.db.doc(`controllerQueue/${this.id}/commands/${id}`); }
   enqueue(tx, command) {

@@ -24,7 +24,7 @@ export class RelayBenchTests {
     await this.db.runTransaction(async tx => {
       const [existing, lock, pcDoc, snapshot] = await tx.getAll(this.ref(commandId), this.lock(),
         this.db.doc(`workstations/${workstationId}`), this.db.doc(`controllerSnapshots/${this.id}`));
-      const prior = existing.data(), pc = pcDoc.data(), s = telemetry ?? snapshot.data(), now = this.now();
+      const prior = existing.data(), pc = pcDoc.data(), s = this.lab.controller.telemetry ? telemetry : snapshot.data(), now = this.now();
       if (prior) {
         requireThat(prior.controllerId === this.id && prior.createdBy === actor.uid && prior.workstationId === workstationId,
           'Test request identity conflicts with an existing request.', 409);

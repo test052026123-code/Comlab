@@ -57,7 +57,11 @@ test('retired boots cannot return and failed checkpoints cannot enable idle sync
 test('workstation status reads realtime telemetry and expires it without Firestore writes', async () => {
   const { telemetry, clock, body } = fixture();
   const db = new Store(), controller = new CloudController(db, 'CENTRAL', { telemetry, now: () => clock.now });
-  await telemetry.accept(body(1), true);
+  const report = body(1);
+  await telemetry.accept(report, true);
+  assert.equal((await controller.status()).connected, false);
+  await assert.rejects(controller.nodes(), { status: 503 });
+  await telemetry.confirmBoot(report.bootId);
   assert.equal((await controller.status()).connected, true);
   assert.equal((await controller.nodes())[0].power, 'off');
   clock.now += 16000;
