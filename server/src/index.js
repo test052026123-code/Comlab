@@ -12,6 +12,7 @@ import { authenticateDevice } from './device-auth.js';
 import { Fingerprints } from './fingerprints.js';
 import { RelayBenchTests } from './relay-bench.js';
 import { adminWebCors } from './admin-web.js';
+import { safeFailure, proxyHops } from './server-diagnostics.js';
 import { Fault, requireThat, csv, approvedRole } from './domain.js';
 
 if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('ComLab requires real Firebase services.');
@@ -28,6 +29,7 @@ const lab = new LabService(db, controller);
 const fingerprints = new Fingerprints(db, process.env.CONTROLLER_ID || 'LAB-CONTROLLER', lab);
 const relayBench = new RelayBenchTests(db, process.env.CONTROLLER_ID || 'LAB-CONTROLLER', lab);
 const app = express();
+app.set('trust proxy', proxyHops(process.env));
 app.disable('x-powered-by');
 app.use(helmet(), adminWebCors, express.json({ limit: '16kb' }));
 // Process liveness only. Firebase/controller checks stay authenticated.
@@ -163,7 +165,7 @@ app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   const status = err instanceof z.ZodError ? 400 : err.status || 503;
   // Never log tokens, pairing secrets, submitted student IDs, or ADC errors.
-  console.error(`ComLab request failed (${status})`);
+  console.error(safeFailure(req, err, status));
   res.status(status).json({ error: err instanceof z.ZodError ? 'Invalid input. Check required fields and identifier format.' : err instanceof Fault ? err.message : 'Cloud operation unavailable. Check server logs, Firebase permissions and internet; retry using the same operation.' });
 });
 app.listen(Number(process.env.PORT || 8080), process.env.HOST || '127.0.0.1', () => console.log('ComLab API ready behind your HTTPS reverse proxy.'));

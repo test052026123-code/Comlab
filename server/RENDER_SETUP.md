@@ -24,6 +24,7 @@ Set these environment variables (the Blueprint already sets fixed values):
 | `NODE_VERSION` | `24.15.0` |
 | `NODE_ENV` | `production` |
 | `HOST` | `0.0.0.0` |
+| `TRUST_PROXY_HOPS` | `1` for the Render ingress; review if adding another proxy |
 | `CONTROLLER_TRANSPORT` | `cloud` |
 | `CONTROLLER_ID` | `LAB-CONTROLLER` |
 | `GOOGLE_CLOUD_PROJECT` | `comlab-2ed9d` |
@@ -57,6 +58,16 @@ origin from Render**. The verified current origin is recorded at the top of this
 document; placeholder arguments below must be replaced with that actual origin.
 
 ## Verify and connect
+
+For a stale/read-only admin dashboard, inspect `request_failed` log entries.
+They include the route template and a sanitized SDK code without request bodies,
+tokens, student identifiers, or raw credential errors. Numeric gRPC code 7 means
+permission denied, 8 resource exhausted, 14 unavailable, and 16 unauthenticated.
+The older `ComLab request failed (503)` message alone cannot identify the cause.
+Do not change Firestore client rules to repair Admin SDK access.
+The proxy setting fixes the forwarded-header rate-limit warning separately;
+it does not establish or repair the cause of a backend 503.
+Source changes must be deployed on Render before these diagnostics appear.
 
 1. Open the actual origin plus `/healthz`: expect `{"status":"ok"}`.
 2. Open `/health` without a token: expect HTTP 401. This is the access guard,
