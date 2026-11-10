@@ -20,10 +20,11 @@ export class RelayBenchTests {
   public(r) { return { ...wire(r), state: r.state === 'pending' && r.expiresAtMs <= this.now() ? 'unknown' : r.state }; }
   async start(actor, { commandId, workstationId }) {
     requireThat(actor.role === 'admin', 'Administrator authentication required.', 403);
+    const telemetry = this.lab.controller.telemetry ? await this.lab.controller.snapshot() : null;
     await this.db.runTransaction(async tx => {
       const [existing, lock, pcDoc, snapshot] = await tx.getAll(this.ref(commandId), this.lock(),
         this.db.doc(`workstations/${workstationId}`), this.db.doc(`controllerSnapshots/${this.id}`));
-      const prior = existing.data(), pc = pcDoc.data(), s = snapshot.data(), now = this.now();
+      const prior = existing.data(), pc = pcDoc.data(), s = telemetry ?? snapshot.data(), now = this.now();
       if (prior) {
         requireThat(prior.controllerId === this.id && prior.createdBy === actor.uid && prior.workstationId === workstationId,
           'Test request identity conflicts with an existing request.', 409);

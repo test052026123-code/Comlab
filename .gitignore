@@ -29,6 +29,7 @@ server/node_modules/
 server/.env
 server/.local/
 config/firebase.json
+/google-services.json
 **/secrets.h
 **/node_secrets.h
 **/node-pairing.json

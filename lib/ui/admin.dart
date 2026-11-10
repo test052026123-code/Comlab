@@ -37,13 +37,24 @@ class AdminData extends ChangeNotifier {
       to = '';
   String get query =>
       '?${Uri(queryParameters: {if (studentFilter.isNotEmpty) 'student': studentFilter, if (pcFilter.isNotEmpty) 'pc': pcFilter, if (sectionFilter.isNotEmpty) 'section': sectionFilter, if (from.isNotEmpty) 'from': from, if (to.isNotEmpty) 'to': to}).query}';
-  Future<void> load() async {
+  Future<void> load({bool statusOnly = false}) async {
     if (!lab.admin || disposed) return;
     loading = true;
-    error = null;
+    if (!statusOnly) error = null;
     notifyListeners();
     try {
       final repo = lab.repository;
+      if (statusOnly) {
+        final result = await repo.get('/workstations');
+        if (disposed) return;
+        workstations = (result['workstations'] as List).cast<Json>();
+        if (result['controllerError'] != null) {
+          error = result['controllerError'] as String;
+        }
+        loading = false;
+        notifyListeners();
+        return;
+      }
       final results = await Future.wait([
         repo.get('/admin/students'),
         repo.get('/workstations'),
@@ -110,8 +121,10 @@ class _AdminScreenState extends State<AdminScreen> {
     super.initState();
     data = AdminData(widget.state);
     data.load();
-    refresh = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (!data.loading && !widget.state.busy) data.load();
+    refresh = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (!data.loading && !widget.state.busy) {
+        data.load(statusOnly: timer.tick % 4 != 0);
+      }
     });
   }
 
@@ -258,7 +271,7 @@ class _AdminScreenState extends State<AdminScreen> {
     return _list([
       titleBlock(
         'Laboratory at a glance',
-        'Live records • Refreshes every 15 seconds • Dates in Philippine time',
+        'PC status every 15 seconds • Records every minute • Dates in Philippine time',
       ),
       Wrap(
         spacing: 16,

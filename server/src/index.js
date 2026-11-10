@@ -4,10 +4,12 @@ import rateLimit from 'express-rate-limit';
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getDatabase } from 'firebase-admin/database';
 import { z } from 'zod';
 import { LabService } from './service.js';
 import { Controller } from './controller.js';
-import { CloudController } from './cloud-controller.js';
+import { CloudController, syncSchema } from './cloud-controller.js';
+import { RealtimeTelemetry, ControllerWorkMonitor } from './realtime-telemetry.js';
 import { authenticateDevice } from './device-auth.js';
 import { Fingerprints } from './fingerprints.js';
 import { RelayBenchTests } from './relay-bench.js';
@@ -16,14 +18,19 @@ import { safeFailure, proxyHops } from './server-diagnostics.js';
 import { Fault, requireThat, csv, approvedRole } from './domain.js';
 
 if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('ComLab requires real Firebase services.');
-initializeApp({ credential: applicationDefault() });
+const databaseURL = process.env.FIREBASE_DATABASE_URL || (process.env.GOOGLE_CLOUD_PROJECT === 'comlab-45f0c'
+  ? 'https://comlab-45f0c-default-rtdb.asia-southeast1.firebasedatabase.app' : undefined);
+initializeApp({ credential: applicationDefault(), ...(databaseURL ? { databaseURL } : {}) });
 const db = getFirestore();
 const transport = process.env.CONTROLLER_TRANSPORT || 'lan';
 if (!['lan', 'cloud'].includes(transport)) throw new Error('CONTROLLER_TRANSPORT must be lan or cloud.');
 if (transport === 'cloud' && (!/^[A-Za-z0-9_-]{1,48}$/.test(process.env.CONTROLLER_ID || '') || !/^[a-f0-9]{64}$/i.test(process.env.CONTROLLER_DEVICE_KEY_SHA256 || ''))) {
   throw new Error('Configure CONTROLLER_ID and CONTROLLER_DEVICE_KEY_SHA256 for cloud mode.');
 }
-const controller = transport === 'cloud' ? new CloudController(db, process.env.CONTROLLER_ID)
+const telemetry = transport === 'cloud' && databaseURL
+  ? new RealtimeTelemetry(getDatabase(), process.env.CONTROLLER_ID) : null;
+const monitor = telemetry ? new ControllerWorkMonitor(db, process.env.CONTROLLER_ID) : null;
+const controller = transport === 'cloud' ? new CloudController(db, process.env.CONTROLLER_ID, { telemetry })
   : new Controller(process.env.CONTROLLER_URL, process.env.CONTROLLER_TOKEN, Number(process.env.CONTROLLER_TIMEOUT_MS || 4000));
 const lab = new LabService(db, controller);
 const fingerprints = new Fingerprints(db, process.env.CONTROLLER_ID || 'LAB-CONTROLLER', lab);
@@ -38,7 +45,17 @@ if (transport === 'cloud') {
   app.post('/v1/controller/sync', rateLimit({ windowMs: 60000, limit: 60 }), async (req, res, next) => {
     try {
       authenticateDevice(req.headers, process.env.CONTROLLER_ID, process.env.CONTROLLER_DEVICE_KEY_SHA256);
+      if (telemetry) {
+        const body = syncSchema.parse(req.body), now = Date.now();
+        requireThat(Date.parse(body.sampledAt) <= now + 2000, 'Controller clock is ahead.', 409);
+        requireThat(new Set(body.nodes.map(n => n.nodeId)).size === body.nodes.length &&
+          new Set(body.nodes.map(n => n.workstationId)).size === body.nodes.length &&
+          new Set(body.results.map(r => r.commandId)).size === body.results.length, 'Duplicate controller identity.', 400);
+        const accepted = await telemetry.accept(body, monitor.idle(body, now));
+        if (accepted.idle) return res.json(accepted.response);
+      }
       const response = await controller.sync(req.body);
+      if (telemetry) await telemetry.confirmBoot(req.body.bootId);
       res.json({ ...response, ...await fingerprints.deviceExchange(req.body.fingerprintResult, req.body.fingerprintProgress, req.body.fingerprintCapacity),
         ...await relayBench.deviceExchange(req.body.benchResult, req.body.benchSupported === true) });
     } catch (e) { next(e); }

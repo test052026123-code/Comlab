@@ -27,13 +27,14 @@ Set these environment variables (the Blueprint already sets fixed values):
 | `TRUST_PROXY_HOPS` | `1` for the Render ingress; review if adding another proxy |
 | `CONTROLLER_TRANSPORT` | `cloud` |
 | `CONTROLLER_ID` | `LAB-CONTROLLER` |
-| `GOOGLE_CLOUD_PROJECT` | `comlab-2ed9d` |
+| `GOOGLE_CLOUD_PROJECT` | `comlab-45f0c` |
+| `FIREBASE_DATABASE_URL` | `https://comlab-45f0c-default-rtdb.asia-southeast1.firebasedatabase.app` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | `/etc/secrets/firebase-admin.json` |
 | `CONTROLLER_DEVICE_KEY_SHA256` | Value from the protected hash-only file below |
 
 In Render **Environment > Secret Files**, add `firebase-admin.json` using the
 existing protected server service-account JSON at
-`C:\Users\clima\.comlab-secrets\comlab-server.json`. Never add this file to Git,
+your protected local key file for `comlab-45f0c`. Never add this file to Git,
 the mobile app, firmware, build logs, or chat. Use an identity with only the
 Firestore and Firebase Auth permissions required by the existing backend.
 Existing approved account documents remain in the same Firebase project; moving

@@ -1,7 +1,9 @@
 {
-  "apiKey": "AIzaSyBRxQZS3WK1apUP2eh7LTD_pWnE4TS5mOE",
-  "appId": "1:473142214133:web:867a5f4ceb12d39ee3b4bc",
-  "projectId": "comlab-2ed9d",
-  "authDomain": "comlab-2ed9d.firebaseapp.com",
-  "messagingSenderId": "473142214133"
+  "apiKey": "AIzaSyDN6_FpFZ6G_icSGhC6oNghaEyjNsYIJ20",
+  "authDomain": "comlab-45f0c.firebaseapp.com",
+  "databaseURL": "https://comlab-45f0c-default-rtdb.asia-southeast1.firebasedatabase.app",
+  "projectId": "comlab-45f0c",
+  "storageBucket": "comlab-45f0c.firebasestorage.app",
+  "messagingSenderId": "512451484766",
+  "appId": "1:512451484766:web:854377af482687db1ea8cf"
 }

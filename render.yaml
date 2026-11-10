@@ -24,5 +24,7 @@ services:
         sync: false
       - key: GOOGLE_CLOUD_PROJECT
         sync: false
+      - key: FIREBASE_DATABASE_URL
+        value: https://comlab-45f0c-default-rtdb.asia-southeast1.firebasedatabase.app
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/firebase-admin.json

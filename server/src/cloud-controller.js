@@ -32,22 +32,23 @@ const identityOf = c => ({ commandId: c.commandId, workstationId: c.workstationI
 
 export class CloudController {
   transport = 'cloud';
-  constructor(db, controllerId, { now = Date.now } = {}) {
-    this.db = db; this.id = controllerId; this.now = now;
+  constructor(db, controllerId, { now = Date.now, telemetry = null } = {}) {
+    this.db = db; this.id = controllerId; this.now = now; this.telemetry = telemetry;
   }
+  async snapshot() { return this.telemetry ? this.telemetry.read() : (await this.snapshotRef().get()).data(); }
   snapshotRef() { return this.db.doc(`controllerSnapshots/${this.id}`); }
   queueRef(id) { return this.db.doc(`controllerQueue/${this.id}/commands/${id}`); }
   enqueue(tx, command) {
     tx.create(this.queueRef(command.id), { ...identityOf(command), createdAt: stamp(), expiresAt: Timestamp.fromMillis(this.now() + 30000), deliveryState: 'queued' });
   }
   async status() {
-    const s = (await this.snapshotRef().get()).data();
+    const s = await this.snapshot();
     return { transport: 'cloud', controllerId: this.id, connected: !!s && this.now() - s.receivedAt.toMillis() >= 0 && this.now() - s.receivedAt.toMillis() < 15000,
       receivedAt: s?.receivedAt?.toDate().toISOString() ?? null, sampledAt: s?.sampledAt ?? null,
       firmwareVersion: s?.firmwareVersion ?? null, reportedNodes: s?.nodes?.length ?? 0 };
   }
   async nodes() {
-    const s = (await this.snapshotRef().get()).data();
+    const s = await this.snapshot();
     requireThat(s && this.now() - s.receivedAt.toMillis() >= 0 && this.now() - s.receivedAt.toMillis() < 15000,
       'Cloud controller is offline. Workstations remain unavailable until fresh status arrives.', 503);
     return s.nodes;
