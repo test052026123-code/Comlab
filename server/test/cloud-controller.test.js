@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { CloudController } from '../src/cloud-controller.js';
 import { authenticateDevice } from '../src/device-auth.js';
 import { LabService } from '../src/service.js';
+import { eligible } from '../src/domain.js';
 import { Store } from '../test-support/store.js';
 
 const controllerId = 'LAB-CONTROLLER';
@@ -38,6 +39,32 @@ test('no heartbeat or stale/duplicate telemetry never makes a controller eligibl
   assert.equal(db.docs.get(`controllerSnapshots/${controllerId}`).receivedAt.toMillis(), received);
   await assert.rejects(controller.nodes(),{status:503});
   assert.equal((await lab.workstations()).workstations[0].eligible,false);
+});
+
+test('a fresh sequence after a lost response restores availability without refreshing a replay', async () => {
+  const { controller, body, clock, lab, db } = fixture();
+  const old = body(1);
+  await controller.sync(old); // Committed, but response lost on the network.
+  clock.now += 16000;
+  await controller.sync(old);
+  assert.equal((await lab.workstations()).workstations[0].eligible, false);
+  await controller.sync(body(2));
+  const pc = { ...db.docs.get('workstations/PC-01'), id: 'PC-01' };
+  assert.equal(eligible(pc, (await controller.nodes())[0], clock.now), true);
+});
+
+test('fresh telemetry after lost command delivery retains command identity and original expiry', async () => {
+  const { controller, body, clock, reserve, db } = fixture();
+  await controller.sync(body(1));
+  const id = randomUUID();
+  await reserve(id);
+  const lost = await controller.sync(body(2));
+  clock.now += 5000;
+  const recovered = await controller.sync(body(3));
+  assert.deepEqual(recovered.commands, lost.commands);
+  assert.equal(recovered.commands[0].commandId, id);
+  assert.equal([...db.docs.keys()].filter(k => k.startsWith('commands/')).length, 1);
+  assert.equal(db.docs.get(`commands/${id}`).deliveryBootId, body().bootId);
 });
 test('late samples, future clocks, duplicate mappings, and retired boots fail safely', async () => {
   const {controller,body,clock,lab} = fixture();
@@ -146,4 +173,24 @@ test('discovery-only connected nodes stay unavailable while power is unknown', a
   assert.equal(pc.eligible,false);
   await assert.rejects(reserve(randomUUID()));
   assert.equal([...db.docs.keys()].some(k=>k.startsWith('sessions/')),false);
+});
+
+test('fresh higher sequence recovers aged startup feedback without redispatching the command', async () => {
+  const {controller,body,reserve,clock,db}=fixture();
+  await controller.sync(body());
+  const id=randomUUID(); await reserve(id);
+  const delivered=await controller.sync(body(2));
+  const {expiresAt,...identity}=delivered.commands[0];
+  await controller.sync(body(3,{results:[{...identity,state:'accepted'}]}));
+  const oldSample=new Date(clock.now).toISOString();
+  clock.now+=16000;
+  const on=body().nodes.map(n=>({...n,power:'on'}));
+  await assert.rejects(controller.sync(body(4,{sampledAt:oldSample,nodes:on,
+    results:[{...identity,state:'confirmed_on'}]})),/fresh matching power feedback/);
+  const refreshed=body(5,{nodes:on,results:[{...identity,state:'confirmed_on'}]});
+  const reply=await controller.sync(refreshed);
+  assert.deepEqual(reply.commands,[]);
+  assert.equal(db.docs.get(`commands/${id}`).state,'confirmed_on');
+  assert.equal(db.docs.has(`controllerQueue/${controllerId}/commands/${id}`),false);
+  assert.deepEqual((await controller.sync(refreshed)).commands,[]);
 });

@@ -100,7 +100,7 @@ export class LabService {
     });
     return this.operation(actor, id);
   }
-  async close(actor, id, reason) {
+  async close(actor, id, reason, { studentVerified = false } = {}) {
     await this.db.runTransaction(async tx => {
       const sr = this.ref(`sessions/${id}`), s = await tx.get(sr);
       requireThat(s.exists, 'Session not found.', 404);
@@ -109,12 +109,22 @@ export class LabService {
       const refs = [this.ref(`activeStudents/${data.studentId}`), this.ref(`workstations/${data.workstationId}`)];
       if (data.commandId) refs.push(this.ref(`commands/${data.commandId}`));
       const [a, p, c] = await tx.getAll(...refs);
-      if (!closeDecision(data, c?.data())) return;
-      requireThat(a.data()?.sessionId === id && p.data()?.sessionId === id, 'Assignment integrity error. Contact administrator.');
+      if (!closeDecision(data, c?.data(), { studentVerified })) return;
+      const command = c?.data();
+      const unconfirmedPower = !!command && !['confirmed_on', 'rejected', 'failed'].includes(command.state);
+      const repairedMissingStudentAssignment = actor.role === 'admin' && !a.exists && p.data()?.sessionId === id;
+      requireThat((a.data()?.sessionId === id && p.data()?.sessionId === id) || repairedMissingStudentAssignment,
+        'Assignment integrity error. Contact administrator.');
       tx.update(sr, { status: 'closed', timeOut: stamp(), closeReason: reason, closedBy: actor.uid });
       tx.delete(refs[0]);
       tx.update(refs[1], { sessionId: null, assignment: p.data().maintenance ? 'maintenance' : 'available' });
-      this.audit(tx, actor, 'close_session', { id, reason });
+      // Never let an undelivered power pulse reach a PC that has been released.
+      if (unconfirmedPower && command.delivery === 'cloud' && command.controllerId) {
+        tx.delete(this.db.doc(`controllerQueue/${command.controllerId}/commands/${data.commandId}`));
+      }
+      this.audit(tx, actor, 'close_session', { id, reason,
+        ...(repairedMissingStudentAssignment ? { repairedMissingStudentAssignment: true } : {}),
+        ...(unconfirmedPower ? { studentEndedUnconfirmedPower: true, commandState: command.state } : {}) });
     });
     return { closed: true };
   }
@@ -185,14 +195,59 @@ export class LabService {
     });
     return { canceled: true };
   }
-  async issue(actor, data) {
-    const ref = this.db.collection('issues').doc();
+  async issue(actor, data, { verifiedStudentId } = {}) {
+    // The session ID makes report-and-close retries idempotent after a lost reply.
+    const ref = this.ref(`issues/${data.sessionId}`), sr = this.ref(`sessions/${data.sessionId}`);
     await this.db.runTransaction(async tx => {
-      const s = await tx.get(this.ref(`sessions/${data.sessionId}`));
-      requireThat(s.exists && s.data().status === 'active', 'An active session is required.');
-      tx.create(ref, { ...data, studentId: s.data().studentId, workstationId: s.data().workstationId, status: 'open', remarks: '', resolution: '', createdBy: actor.uid, at: stamp() });
-      this.audit(tx, actor, 'report_issue', { id: ref.id, sessionId: data.sessionId });
+      const [prior, original] = await tx.getAll(ref, sr);
+      const permitted = record => actor.role === 'admin' || record.createdBy === actor.uid ||
+        (verifiedStudentId && record.studentId === verifiedStudentId);
+      if (prior.exists) {
+        requireThat(permitted(prior.data()), 'Report belongs to another kiosk.', 403);
+        requireThat(prior.data().sessionClosed === true, 'Existing report requires staff review.');
+        return;
+      }
+      let session = original.data();
+      const commandId = session?.commandId ?? data.sessionId;
+      const command = (await tx.get(this.ref(`commands/${commandId}`))).data();
+      if (!session) {
+        // Recover a manually deleted session only from matching trusted records.
+        requireThat(command, 'Session is missing. Ask staff to repair its assignment.', 404);
+        requireThat(actor.role === 'admin' || command.createdBy === actor.uid, 'Operation belongs to another kiosk.', 403);
+        const active = await tx.get(this.db.collection('activeStudents').where('sessionId', '==', data.sessionId));
+        requireThat(active.docs.length === 1, 'Missing session assignment requires staff repair.');
+        const studentId = active.docs[0].id;
+        const student = (await tx.get(this.ref(`students/${studentId}`))).data();
+        requireThat(student, 'Student record is missing.', 404);
+        session = { id: data.sessionId, studentId, name: student.name, section: student.section,
+          workstationId: command.workstationId, createdBy: command.createdBy,
+          commandId, status: 'active', timeIn: command.at ?? null, recoveredAfterDeletion: true };
+      }
+      requireThat(permitted(session), 'Session belongs to another kiosk.', 403);
+      requireThat(session.status === 'active', 'Session is already closed.');
+      if (command) requireThat(command.workstationId === session.workstationId && command.createdBy === session.createdBy,
+        'Power command does not match this assignment.');
+      const ar = this.ref(`activeStudents/${session.studentId}`), pr = this.ref(`workstations/${session.workstationId}`);
+      const [active, pc] = await tx.getAll(ar, pr);
+      requireThat(active.data()?.sessionId === data.sessionId && pc.data()?.sessionId === data.sessionId,
+        'Assignment changed. Ask staff to inspect the session.');
+      tx.create(ref, { sessionId: data.sessionId, description: data.description,
+        studentId: session.studentId, workstationId: session.workstationId,
+        status: 'open', remarks: '', resolution: '', createdBy: actor.uid, at: stamp(), sessionClosed: true });
+      const closed = { status: 'closed', timeOut: stamp(), closeReason: 'Problem reported: ' + data.description,
+        closedBy: actor.uid, issueId: ref.id };
+      if (original.exists) tx.update(sr, closed);
+      else tx.create(sr, { ...session, ...closed });
+      tx.delete(ar);
+      // An in-flight relay pulse cannot be recalled. Quarantine the PC and retain
+      // the actual command result for staff instead of inventing power success.
+      tx.update(pr, { sessionId: null, assignment: 'maintenance', maintenance: true });
+      if (command?.delivery === 'cloud' && command.controllerId) {
+        tx.delete(this.db.doc(`controllerQueue/${command.controllerId}/commands/${commandId}`));
+      }
+      this.audit(tx, actor, 'report_and_close_session', { id: ref.id, sessionId: data.sessionId,
+        recoveredAfterDeletion: !original.exists, workstationId: session.workstationId });
     });
-    return { id: ref.id };
+    return { id: ref.id, sessionClosed: true, workstationUnderMaintenance: true };
   }
 }

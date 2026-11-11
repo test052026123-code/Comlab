@@ -1,9 +1,10 @@
 import ctypes
 import sys
 
-result = ctypes.WinDLL(sys.argv[1]).runRelayBenchTests()
+entry = sys.argv[2] if len(sys.argv) > 2 else "runRelayBenchTests"
+result = getattr(ctypes.WinDLL(sys.argv[1]), entry)()
 if result == 0:
-    print("PASS: relay bench state/timer tests (simulated GPIO/timers).")
+    print(f"PASS: {entry} (simulated GPIO/timers/storage).")
 else:
-    print(f"FAIL: relay bench test line {result}")
+    print(f"FAIL: {entry} line {result}")
 sys.exit(0 if result == 0 else 1)

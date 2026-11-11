@@ -26,10 +26,12 @@ export function reservationDecision({ existing, student, active, pc, node, stude
   requireThat(eligible(pc, node), 'PC unavailable, node stale, or power unknown. Refresh and choose another PC.');
   return { duplicate: false, commandRequired: node.power === 'off' };
 }
-export function closeDecision(session, command) {
+// A student whose fingerprint was just verified has used the PC, which is
+// stronger evidence than missing power feedback; their checkout may proceed.
+export function closeDecision(session, command, { studentVerified = false } = {}) {
   requireThat(session, 'Session not found.', 404);
   if (session.status === 'closed') return false;
-  requireThat(!command || ['confirmed_on', 'rejected', 'failed'].includes(command.state),
+  requireThat(studentVerified || !command || ['confirmed_on', 'rejected', 'failed'].includes(command.state),
     'Power delivery is pending or unknown. Reconcile before releasing this PC.');
   return true;
 }
