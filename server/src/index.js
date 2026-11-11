@@ -41,7 +41,7 @@ app.set('trust proxy', proxyHops(process.env));
 app.disable('x-powered-by');
 app.use(helmet(), adminWebCors, express.json({ limit: '16kb' }));
 // Process liveness only. Firebase/controller checks stay authenticated.
-app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'student-end-session-1' }));
+app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'status-fresh-30s' }));
 if (transport === 'cloud') {
   app.post('/v1/controller/sync', rateLimit({ windowMs: 60000, limit: 60 }), async (req, res, next) => {
     try {
