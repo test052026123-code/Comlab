@@ -179,7 +179,7 @@ test('disabled, maintenance, stale, disconnected, unmapped and unknown-power nod
   const n={workstationId:'PC-01',nodeId:'N1',power:'off',connectivity:'connected',observedAt:new Date().toISOString()};
   assert.ok(eligible(pc,n));
   for(const p of [{...pc,enabled:false},{...pc,maintenance:true},{...pc,sessionId:'busy'}]) assert.ok(!eligible(p,n));
-  for(const node of [{...n,power:'unknown'},{...n,connectivity:'disconnected'},{...n,nodeId:'other'},{...n,observedAt:new Date(Date.now()-16000).toISOString()}]) assert.ok(!eligible(pc,node));
+  for(const node of [{...n,power:'unknown'},{...n,connectivity:'disconnected'},{...n,nodeId:'other'},{...n,observedAt:new Date(Date.now()-31000).toISOString()}]) assert.ok(!eligible(pc,node));
 });
 test('reassignment atomically closes old session and changes active assignment',async()=>{
   const {lab,actor,db}=fixture('on');await lab.reserve(actor,request('op1'));const admin={uid:'staff',role:'admin'};

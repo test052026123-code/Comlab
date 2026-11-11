@@ -9,10 +9,13 @@ export function approvedRole(user, kiosk) {
 export function requireThat(ok, message, status = 409) {
   if (!ok) throw new Fault(status, message);
 }
+// Status age allowed for availability. The controller only reports nodes heard
+// within 6 s; this covers slow cloud round trips between controller and tablet.
+export const STATUS_FRESH_MS = 30000;
 export function eligible(pc, node, now = Date.now()) {
   return !!pc && pc.enabled === true && !pc.maintenance && !pc.sessionId &&
     !!node && node.nodeId === pc.nodeId && node.workstationId === pc.id &&
-    node.connectivity === 'connected' && now - Date.parse(node.observedAt) < 15000 &&
+    node.connectivity === 'connected' && now - Date.parse(node.observedAt) < STATUS_FRESH_MS &&
     now >= Date.parse(node.observedAt) && ['on', 'off'].includes(node.power);
 }
 export function reservationDecision({ existing, student, active, pc, node, studentId, workstationId }) {

@@ -35,7 +35,7 @@ test('no heartbeat or stale/duplicate telemetry never makes a controller eligibl
   const report = body(); await controller.sync(report);
   assert.equal((await lab.workstations()).workstations[0].eligible,true);
   const received = db.docs.get(`controllerSnapshots/${controllerId}`).receivedAt.toMillis();
-  clock.now += 16000; await controller.sync(report);
+  clock.now += 31000; await controller.sync(report);
   assert.equal(db.docs.get(`controllerSnapshots/${controllerId}`).receivedAt.toMillis(), received);
   await assert.rejects(controller.nodes(),{status:503});
   assert.equal((await lab.workstations()).workstations[0].eligible,false);
@@ -45,7 +45,7 @@ test('a fresh sequence after a lost response restores availability without refre
   const { controller, body, clock, lab, db } = fixture();
   const old = body(1);
   await controller.sync(old); // Committed, but response lost on the network.
-  clock.now += 16000;
+  clock.now += 31000;
   await controller.sync(old);
   assert.equal((await lab.workstations()).workstations[0].eligible, false);
   await controller.sync(body(2));
@@ -68,7 +68,7 @@ test('fresh telemetry after lost command delivery retains command identity and o
 });
 test('late samples, future clocks, duplicate mappings, and retired boots fail safely', async () => {
   const {controller,body,clock,lab} = fixture();
-  await controller.sync(body(1,{sampledAt:new Date(clock.now-20000).toISOString()}));
+  await controller.sync(body(1,{sampledAt:new Date(clock.now-35000).toISOString()}));
   assert.equal((await lab.workstations()).workstations[0].eligible,false);
   await assert.rejects(controller.sync(body(2,{sampledAt:new Date(clock.now+3000).toISOString()})),{status:409});
   await assert.rejects(controller.sync(body(2,{nodes:[...body().nodes,...body().nodes]})),{status:400});

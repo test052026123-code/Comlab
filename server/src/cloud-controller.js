@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { z } from 'zod';
-import { Fault, requireThat } from './domain.js';
+import { Fault, requireThat, STATUS_FRESH_MS } from './domain.js';
 import { fingerprintResultSchema, fingerprintProgressSchema, fingerprintCapacitySchema } from './fingerprints.js';
 import { benchResultSchema } from './relay-bench.js';
 
@@ -47,13 +47,13 @@ export class CloudController {
   }
   async status() {
     const s = await this.snapshot();
-    return { transport: 'cloud', controllerId: this.id, connected: !!s && this.now() - s.receivedAt.toMillis() >= 0 && this.now() - s.receivedAt.toMillis() < 15000,
+    return { transport: 'cloud', controllerId: this.id, connected: !!s && this.now() - s.receivedAt.toMillis() >= 0 && this.now() - s.receivedAt.toMillis() < STATUS_FRESH_MS,
       receivedAt: s?.receivedAt?.toDate().toISOString() ?? null, sampledAt: s?.sampledAt ?? null,
       firmwareVersion: s?.firmwareVersion ?? null, reportedNodes: s?.nodes?.length ?? 0 };
   }
   async nodes() {
     const s = await this.snapshot();
-    requireThat(s && this.now() - s.receivedAt.toMillis() >= 0 && this.now() - s.receivedAt.toMillis() < 15000,
+    requireThat(s && this.now() - s.receivedAt.toMillis() >= 0 && this.now() - s.receivedAt.toMillis() < STATUS_FRESH_MS,
       'Cloud controller is offline. Workstations remain unavailable until fresh status arrives.', 503);
     return s.nodes;
   }

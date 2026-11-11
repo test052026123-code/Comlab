@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'node:crypto';
-import { closeDecision, commandResult, eligible, requireThat, reservationDecision } from './domain.js';
+import { closeDecision, commandResult, eligible, requireThat, reservationDecision, STATUS_FRESH_MS } from './domain.js';
 
 const stamp = () => FieldValue.serverTimestamp();
 export const serialize = value => {
@@ -38,7 +38,7 @@ export class LabService {
     try { nodes = await this.controller.nodes(); } catch (e) { controllerError = e.message; }
     return { controllerError, workstations: pcs.map(pc => {
       const node = nodes.find(n => n.nodeId === pc.nodeId && n.workstationId === pc.id);
-      const fresh = node && Date.now() - Date.parse(node.observedAt) < 15000 && Date.now() >= Date.parse(node.observedAt);
+      const fresh = node && Date.now() - Date.parse(node.observedAt) < STATUS_FRESH_MS && Date.now() >= Date.parse(node.observedAt);
       return { ...pc, node: fresh ? node : { connectivity: node ? 'stale' : 'disconnected', power: 'unknown', reachability: 'unknown', input: 'unknown' }, eligible: eligible(pc, node) };
     }) };
   }

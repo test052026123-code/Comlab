@@ -64,7 +64,7 @@ test('workstation status reads realtime telemetry and expires it without Firesto
   await telemetry.confirmBoot(report.bootId);
   assert.equal((await controller.status()).connected, true);
   assert.equal((await controller.nodes())[0].power, 'off');
-  clock.now += 16000;
+  clock.now += 31000;
   assert.equal((await controller.status()).connected, false);
   await assert.rejects(controller.nodes(), { status: 503 });
   assert.equal(db.docs.size, 0);
