@@ -6,7 +6,12 @@ param(
 $ErrorActionPreference = 'Stop'
 $comlabRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $comlabCli = Join-Path $env:ProgramFiles 'Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe'
-if (-not (Test-Path -LiteralPath $comlabCli)) { throw 'Arduino CLI was not found in the installed Arduino IDE folder.' }
+$comlabCliConfig = @()
+if (-not (Test-Path -LiteralPath $comlabCli)) {
+    $comlabCli = Join-Path $comlabRoot 'server\.local\toolchain\arduino-cli.exe'
+    $comlabCliConfig = @('--config-file', (Join-Path $comlabRoot 'server\.local\toolchain\arduino-cli.yaml'))
+}
+if (-not (Test-Path -LiteralPath $comlabCli)) { throw 'Arduino CLI was not found in Arduino IDE or server/.local/toolchain.' }
 $comlabSketchName = switch ($Target) {
     'controller' { 'comlab_cloud' }
     'node' { 'comlab_node' }
@@ -31,7 +36,7 @@ New-Item -ItemType Directory -Path $comlabOutput -Force | Out-Null
 Write-Output "Compiling $Target with one compiler job. Keep Arduino IDE Verify/Upload stopped."
 try {
     $ErrorActionPreference = 'Continue'
-    & $comlabCli compile --fqbn esp32:esp32:esp32doit-devkit-v1 --jobs 1 --output-dir $comlabOutput $comlabSketch *> $comlabLog
+    & $comlabCli compile @comlabCliConfig --fqbn esp32:esp32:esp32doit-devkit-v1 --jobs 1 --output-dir $comlabOutput $comlabSketch *> $comlabLog
     $comlabBuildExit = $LASTEXITCODE
 } finally { $ErrorActionPreference = 'Stop' }
 if ($comlabBuildExit -ne 0) { throw "Build failed. Inspect the local log: $comlabLog. Close unused apps to free memory before retrying." }

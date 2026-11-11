@@ -1,5 +1,6 @@
 #include "RelayBench.h"
 #include "BenchPolicy.h"
+#include "PowerPolicy.h"
 
 // Freestanding host DLL: no runtime or hardware dependencies.
 extern "C" void* memset(void* destination, int value, size_t length) {
@@ -25,6 +26,8 @@ static void reset() {
   RelayBench::pulseDeadlineUs = RelayBench::armDeadlineUs = 0;
   RelayBench::lastTestAt = 0; RelayBench::inputLength = 0;
   RelayBench::remoteProgress = 0;
+  RelayBench::pulseGuard = nullptr; RelayBench::benchAllowed = nullptr;
+  RelayBench::guardedPulse = false;
 }
 #define CHECK(condition) if (!(condition)) return __LINE__
 extern "C" __declspec(dllexport) int runRelayBenchTests() {
@@ -97,5 +100,52 @@ extern "C" __declspec(dllexport) int runRelayBenchTests() {
   CHECK(!benchNewer(now, now));
   CHECK(!benchNewer(now - 1, now));
   CHECK(benchNewer(now + 1, now));
+
+  // A production pulse must pass its final guard at the actual HIGH transition.
+  reset(); RelayBench::begin();
+  RelayBench::pulseGuard = []() { return false; };
+  CHECK(RelayBench::remotePulse(true));
+  FakeBoard::advance(5000);
+  CHECK(FakeBoard::risingEdges == 0 && RelayBench::remoteStatus() == 5);
+  reset(); RelayBench::begin();
+  RelayBench::pulseGuard = []() { return true; };
+  CHECK(RelayBench::remotePulse(true));
+  FakeBoard::advance(5000); CHECK(FakeBoard::risingEdges == 1);
+  FakeBoard::advance(300000); CHECK(FakeBoard::level == 0);
+  // A failed sensor recheck cannot affect subsequent explicitly armed USB tests.
+  FakeBoard::advance(3000000);
+  RelayBench::pulseGuard = []() { return false; };
+  RelayBench::command(String("ARM"));
+  RelayBench::command(String("TEST")); FakeBoard::advance(5000);
+  CHECK(FakeBoard::risingEdges == 2);
+  RelayBench::off();
+  RelayBench::benchAllowed = []() { return false; };
+  FakeBoard::advance(3000000);
+  CHECK(!RelayBench::remotePulse());
+  RelayBench::command(String("ARM")); CHECK(!RelayBench::armed);
+  CHECK(RelayBench::remotePulse(true)); // Production can use the shared executor.
+  RelayBench::command(String("OFF")); CHECK(RelayBench::remoteStatus() == 4);
+
+  CHECK(PowerPolicy::uuid("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"));
+  CHECK(!PowerPolicy::uuid("short"));
+  CHECK(!PowerPolicy::uuid("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaz"));
+  CHECK(PowerPolicy::validTime(now, now, now + 30000));
+  CHECK(!PowerPolicy::validTime(now, now, now));
+  CHECK(!PowerPolicy::validTime(now, now + 2001, now + 30000));
+  CHECK(!PowerPolicy::validTime(now, now - 31000, now + 1));
+  CHECK(!PowerPolicy::validTime(now, now, now + 30001));
+  CHECK(!PowerPolicy::validTime(0, 0, 30000));
+  CHECK(PowerPolicy::canStart(true, true, true, false, false));
+  CHECK(!PowerPolicy::canStart(false, true, true, false, false));
+  CHECK(!PowerPolicy::canStart(true, false, true, false, false));
+  CHECK(!PowerPolicy::canStart(true, true, false, false, false));
+  CHECK(!PowerPolicy::canStart(true, true, true, true, false));
+  CHECK(!PowerPolicy::canStart(true, true, true, false, true));
+  CHECK(PowerPolicy::completion(2, true, false) == PowerPolicy::Accepted);
+  CHECK(PowerPolicy::completion(3, false, false) == PowerPolicy::Accepted);
+  CHECK(PowerPolicy::completion(3, true, false) == PowerPolicy::ConfirmedOn);
+  CHECK(PowerPolicy::completion(3, false, true) == PowerPolicy::Unknown);
+  CHECK(PowerPolicy::completion(4, true, false) == PowerPolicy::Unknown);
+  CHECK(PowerPolicy::completion(5, true, false) == PowerPolicy::Rejected);
   return 0;
 }

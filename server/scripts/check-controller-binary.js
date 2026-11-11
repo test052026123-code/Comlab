@@ -6,7 +6,7 @@ try {
   const firmware = readFileSync(new URL('server/.local/cloud-firmware-build/comlab_cloud.ino.bin', root));
   const header = readFileSync(new URL('firmware/comlab_cloud/secrets.h', root), 'utf8');
   const peers = readFileSync(new URL('firmware/comlab_cloud/node_secrets.h', root), 'utf8');
-  for (const required of ['ComLab outbound HTTPS + authenticated node discovery.', '[Nodes] Authenticated heartbeat receiver ready', 'comlab-cloud-enroll-5', '[Fingerprint] AS608 ready', '[Bench] Cloud test received']) {
+  for (const required of ['ComLab outbound HTTPS + authenticated node discovery.', '[Nodes] Authenticated heartbeat receiver ready', 'comlab-cloud-link-13', 'Async HTTPS worker v1', 'Fresh telemetry retry v1', 'Network diagnostics v1', 'Persistent HTTPS v1', 'Guarded power-on bridge v1', '[Fingerprint] AS608 ready', '[Bench] Cloud test received']) {
     if (!firmware.includes(Buffer.from(required))) throw new Error();
   }
   for (const name of ['COMLAB_WIFI_SSID', 'COMLAB_WIFI_PASSWORD', 'COMLAB_API_ORIGIN', 'COMLAB_CONTROLLER_ID', 'COMLAB_DEVICE_KEY']) {

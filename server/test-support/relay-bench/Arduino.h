@@ -21,7 +21,16 @@ inline void advance(int64_t delta) {
 class String {
   char text[96] = {};
 public:
+  String() = default;
   String(const char* value) { size_t i = 0; while (value[i] && i < sizeof(text)-1) { text[i] = value[i]; ++i; } }
+  const char* c_str() const { return text; }
+  bool isEmpty() const { return !text[0]; }
+  void clear() { text[0] = 0; }
+  size_t length() const { size_t i = 0; while (text[i]) ++i; return i; }
+  void toCharArray(char* output, size_t size) const {
+    if (!size) return;
+    size_t i = 0; while (text[i] && i + 1 < size) { output[i] = text[i]; ++i; } output[i] = 0;
+  }
   void trim() {
     size_t start = 0, end = 0;
     while (text[end]) ++end;
@@ -31,6 +40,7 @@ public:
   }
   void toUpperCase() { for (size_t i = 0; text[i]; ++i) if (text[i] >= 'a' && text[i] <= 'z') text[i] -= 32; }
   bool operator==(const char* other) const { size_t i = 0; while (text[i] && text[i] == other[i]) ++i; return text[i] == other[i]; }
+  bool operator!=(const char* other) const { return !(*this == other); }
 };
 struct FakeSerial {
   void println(const char*) {}

@@ -13,6 +13,7 @@ import { Fingerprints } from './fingerprints.js';
 import { RelayBenchTests } from './relay-bench.js';
 import { adminWebCors } from './admin-web.js';
 import { Fault, requireThat, csv, approvedRole } from './domain.js';
+import { issueIdSchema } from './issue-schema.js';
 
 if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('ComLab requires real Firebase services.');
 initializeApp({ credential: applicationDefault() });
@@ -31,7 +32,7 @@ const app = express();
 app.disable('x-powered-by');
 app.use(helmet(), adminWebCors, express.json({ limit: '16kb' }));
 // Process liveness only. Firebase/controller checks stay authenticated.
-app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'fingerprint-enroll-1' }));
+app.get('/healthz', (req, res) => res.json({ status: 'ok', apiVersion: 'student-end-session-1' }));
 if (transport === 'cloud') {
   app.post('/v1/controller/sync', rateLimit({ windowMs: 60000, limit: 60 }), async (req, res, next) => {
     try {
@@ -105,15 +106,22 @@ app.post('/sessions/:id/close', async (req, res) => {
     const session = (await db.doc(`sessions/${uuid.parse(req.params.id)}`).get()).data();
     await fingerprints.authorize(req.actor, uuid.parse(req.body.scanRequestId), session?.studentId);
   }
-  res.json(await lab.close(req.actor, uuid.parse(req.params.id), reason));
+  // Only a fresh matched scan of the session's own student counts as verification.
+  res.json(await lab.close(req.actor, uuid.parse(req.params.id), reason, { studentVerified: req.actor.role !== 'admin' }));
 });
 app.post('/issues', async (req, res) => {
   const data = z.object({ sessionId: uuid, description: text, scanRequestId: uuid.optional() }).strict().parse(req.body);
+  let verifiedStudentId;
   if (req.actor.role !== 'admin') {
     const session = (await db.doc(`sessions/${data.sessionId}`).get()).data();
-    await fingerprints.authorize(req.actor, uuid.parse(data.scanRequestId), session?.studentId);
+    // The creating kiosk can report its own failed startup even after the scan
+    // expires. A different kiosk still needs a fresh proof for this student.
+    if (session && session.createdBy !== req.actor.uid) {
+      await fingerprints.authorize(req.actor, uuid.parse(data.scanRequestId), session.studentId);
+      verifiedStudentId = session.studentId;
+    }
   }
-  res.json(await lab.issue(req.actor, data));
+  res.json(await lab.issue(req.actor, data, { verifiedStudentId }));
 });
 app.get('/settings', async (req, res) => {
   const s = (await db.doc('settings/lab').get()).data();
@@ -150,7 +158,7 @@ app.get('/admin/issues', async (req, res) => res.json({ rows: await lab.list('is
 app.put('/admin/issues/:id', async (req, res) => {
   const data = z.object({ status: z.enum(['open', 'investigating', 'resolved']), remarks: z.string().max(1000), resolution: z.string().max(1000) }).strict().parse(req.body);
   requireThat(data.status !== 'resolved' || data.resolution.trim(), 'Provide a resolution before resolving.');
-  const issueId = z.string().regex(/^[a-zA-Z0-9]{20}$/).parse(req.params.id);
+  const issueId = issueIdSchema.parse(req.params.id);
   requireThat((await db.doc(`issues/${issueId}`).get()).exists, 'Issue not found.', 404);
   res.json(await lab.save(req.actor, 'issues', issueId, data));
 });
