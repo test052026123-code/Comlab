@@ -9,7 +9,7 @@ import * as lab from './lab.js';
 const uuid = z.string().uuid();
 const wsId = z.string().regex(/^[A-Z0-9-]{2,16}$/);
 
-export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY } = {}) {
+export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerprints = null } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(helmet(), express.json({ limit: '64kb' }));
@@ -70,6 +70,20 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY } = {}) {
   app.get('/settings/kiosk', h(() => ({ autoAssignAfterSeconds: lab.getSetting(db, 'autoAssignAfterSeconds', 30),
     welcomeTimeoutSeconds: lab.getSetting(db, 'welcomeTimeoutSeconds', 25) })));
 
+  // ---- fingerprint sensor --------------------------------------------------
+  const fp = () => { requireThat(fingerprints, 'Fingerprint sensor is not configured on this server.', 503); return fingerprints; };
+  const admin = roles('admin');
+  app.get('/fingerprint/status', h(() => fp().status()));
+  app.post('/fingerprint/identify', h(req => fp().identify(req.actor)));
+  app.get('/fingerprint/requests/:id', h(req => fp().job(uuid.parse(req.params.id))));
+  app.post('/fingerprint/requests/:id/cancel', h(req => fp().cancel(uuid.parse(req.params.id))));
+  app.post('/api/fingerprint/enroll', admin, h(req => {
+    const { personType, personId } = z.object({ personType: z.enum(['student', 'staff']), personId: z.string().min(1).max(64) }).strict().parse(req.body);
+    return fp().enroll(req.actor, personType, personId);
+  }));
+  app.get('/api/fingerprint/slots', admin, h(() => fp().slots()));
+  app.delete('/api/fingerprint/slots/:slot', admin, h(req => fp().removeSlot(req.actor, z.coerce.number().int().min(0).max(999).parse(req.params.slot))));
+
   // ---- dashboard -----------------------------------------------------------
   const staff = roles('admin', 'technician', 'instructor');
   for (const name of Object.keys(RESOURCES)) {
@@ -78,7 +92,13 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY } = {}) {
     app.get(`/api/${name}/:id`, staff, h(req => c().read(req.actor, req.params.id)));
     app.post(`/api/${name}`, staff, h(req => c().create(req.actor, req.body)));
     app.put(`/api/${name}/:id`, staff, h(req => c().update(req.actor, req.params.id, req.body)));
-    app.delete(`/api/${name}/:id`, staff, h(req => c().remove(req.actor, req.params.id)));
+    app.delete(`/api/${name}/:id`, staff, h(async req => {
+      // Deleting a person also wipes their template from the sensor (best effort).
+      const slot = ['students', 'users'].includes(name) ? db.prepare(`SELECT fingerprint_slot s FROM ${name} WHERE id = ?`).get(req.params.id)?.s : null;
+      const r = c().remove(req.actor, req.params.id);
+      if (slot != null && fingerprints?.ready) await fingerprints.sensor.remove(slot).catch(e => console.error('Template delete failed:', e.message));
+      return r;
+    }));
   }
   app.get('/api/attendance', staff, h(req => ({ rows: attendance(db, req.query) })));
   app.get('/api/attendance.csv', staff, (req, res, next) => {
