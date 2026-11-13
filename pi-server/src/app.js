@@ -8,6 +8,7 @@ import { Fault, requireThat } from './errors.js';
 import * as lab from './lab.js';
 import { REPORTS, REPORT_ROLES } from './reports.js';
 import { toXlsx } from './xlsx.js';
+import { registerExtras } from './extras.js';
 
 const uuid = z.string().uuid();
 const wsId = z.string().regex(/^[A-Z0-9-]{2,16}$/);
@@ -133,6 +134,8 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerpri
     lab.audit(db, req.actor, 'settings.update', 'kiosk', s);
     return s;
   }));
+
+  registerExtras(app, db, { h, roles, dbPath: process.env.COMLAB_DB });
 
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);

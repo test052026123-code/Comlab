@@ -105,3 +105,26 @@ test('maintenance: technician resolves issue with a log entry; inventory CRUD', 
   const sum = (await call('GET', '/api/summary', null, admin)).body;
   assert.equal(sum.openIssues, 0); assert.equal(sum.attendanceToday, 2);
 });
+
+test('extras: alerts, analytics, class attendance, import, password, backup', async () => {
+  assert.ok((await call('GET', '/api/alerts', null, admin)).body.rows.some(a => a.kind === 'maintenance'));
+  const an = (await call('GET', '/api/analytics?days=7', null, admin)).body;
+  assert.equal(an.daily.length, 7); assert.equal(an.totals.sessions, 2); assert.equal(an.sections[0].name, 'BSIT 2A');
+  const cls = (await call('GET', '/api/classes', null, admin)).body.rows[0];
+  const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const sheet = (await call('GET', `/api/class-attendance?classId=${cls.id}&date=${date}`, null, admin)).body;
+  assert.equal(sheet.roster.length, 2);
+  const imp = await call('POST', '/api/students/import', { rows: [{ id: '2024-010', name: 'Imported One', section: 'BSIT 3B' }, { id: '2024-001', name: 'Ana Renamed', section: 'BSIT 2A' }] }, admin);
+  assert.deepEqual(imp.body, { created: 1, updated: 1, sectionsCreated: 1 });
+  const t = (await call('POST', '/auth/login', { username: 'teach', password: 'teach-pass-1' })).body.token;
+  assert.equal((await call('POST', '/api/students/import', { rows: [{ id: 'X-01', name: 'X' }] }, t)).status, 403);
+  assert.equal((await call('POST', '/api/me/password', { current: 'wrong', next: 'new-pass-123' }, t)).status, 400);
+  assert.equal((await call('POST', '/api/me/password', { current: 'teach-pass-1', next: 'new-pass-123' }, t)).status, 200);
+  assert.equal((await call('GET', '/me', null, t)).status, 401, 'old sessions are signed out');
+  assert.equal((await call('POST', '/auth/login', { username: 'teach', password: 'new-pass-123' })).status, 200);
+  const r = await fetch(base + '/api/backup', { headers: { authorization: `Bearer ${admin}` } });
+  assert.equal(r.status, 200);
+  const head = Buffer.from(await r.arrayBuffer()).subarray(0, 15).toString();
+  assert.equal(head, 'SQLite format 3');
+  assert.ok((await call('GET', '/api/kiosks', null, admin)).body.rows.length >= 1);
+});

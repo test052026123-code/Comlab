@@ -40,6 +40,14 @@ const ICONS = {
   power: '<path d="M18.4 6.6a9 9 0 1 1-12.8 0M12 2v10"/>',
   wifiOff: '<path d="m2 2 20 20M8.5 16.5a5 5 0 0 1 7 0M2 8.8a15 15 0 0 1 4.2-2.7M10.7 5.1A15 15 0 0 1 22 8.8M5 12.9a10 10 0 0 1 5.2-2.8M12 20h.01"/>',
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+  trend: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>',
+  tablet: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M12 18h.01"/>',
   move: '<path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/>',
 };
 const icon = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] ?? ''}</svg>`;
@@ -115,6 +123,8 @@ const PAGES = [
   ['Monitoring'],
   ['overview', 'Overview', ALL, overview, 'grid'],
   ['attendance', 'Attendance', ALL, attendancePage, 'calendar'],
+  ['class-attendance', 'Class attendance', ALL, classAttendancePage, 'list'],
+  ['analytics', 'Analytics', ALL, analyticsPage, 'trend'],
   ['Laboratory'],
   ['workstations', 'Workstations & map', ALL, workstationsPage, 'map'],
   ['issues', 'Error reports', ALL, () => crudPage('issues'), 'alert'],
@@ -129,8 +139,10 @@ const PAGES = [
   ['System'],
   ['users', 'Staff accounts', ADMIN, () => crudPage('users'), 'shield'],
   ['fingerprints', 'Fingerprint sensor', ADMIN, fingerprintsPage, 'fingerprint'],
-  ['settings', 'Settings', ADMIN, settingsPage, 'settings'],
+  ['settings', 'Settings & backup', ADMIN, settingsPage, 'settings'],
   ['audit', 'Activity log', ADMIN, auditPage, 'activity'],
+  ['Account'],
+  ['account', 'My account', ALL, accountPage, 'user'],
 ];
 const groupOf = id => { let g = ''; for (const p of PAGES) { if (p.length === 1) g = p[0]; else if (p[0] === id) return g; } return ''; };
 function renderNav() {
@@ -145,7 +157,7 @@ function renderNav() {
 }
 async function route() {
   clearInterval(timer);
-  const id = location.hash.slice(2) || 'overview';
+  const id = location.hash.slice(2).split('?')[0] || 'overview';
   const page = PAGES.find(p => p[0] === id && p[2]?.includes(me.role)) ?? PAGES[1];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.page === page[0]));
   $('.side').classList.remove('open');
@@ -229,7 +241,7 @@ const RES = {
     cols: [['createdAt', 'Reported', r => fmt(r.createdAt)], ['workstationId', 'PC'], ['category', 'Category', r => label(r.category)], ['description', 'Problem'],
       ['reportedBy', 'By', r => esc((r.reportedBy ?? '').split(':')[0])], ['assignedTo', 'Technician', 'ref:staff'], ['status', 'Status', r => badge(r.status)]],
     filters: [['status', ['open', 'in_progress', 'resolved']]],
-    extra: r => (TECH.includes(me.role) ? `<button class="btn small" data-log="${esc(r.id)}">Log action</button>` : ''),
+    extra: r => `<button class="btn small" data-history="${esc(r.id)}">${icon('history')} History</button>` + (TECH.includes(me.role) ? ` <button class="btn small" data-log="${esc(r.id)}">Log action</button>` : ''),
   },
   maintenance: {
     title: 'Maintenance entry', write: TECH,
@@ -262,6 +274,7 @@ async function crudPage(name, { mount = $('#view'), rowsOverride } = {}) {
     <div class="toolbar">
       <label class="grow search">Search${icon('search')}<input id="q" placeholder="Search ${esc(R.title.toLowerCase())}s…"></label>
       ${(R.filters ?? []).map(([k, opts]) => `<label>${label(k)}<select data-filter="${k}"><option value="">All</option>${opts.map(o => `<option value="${o}">${label(o)}</option>`).join('')}</select></label>`).join('')}
+      ${canWrite && name === 'students' ? `<button class="btn" type="button" data-import="1">${icon('upload')} Import</button>` : ''}
       ${canWrite ? `<button class="btn primary" id="add">${icon('plus')} Add ${R.title.toLowerCase()}</button>` : ''}
     </div>
     <div class="count" id="count"></div>
@@ -291,6 +304,8 @@ async function crudPage(name, { mount = $('#view'), rowsOverride } = {}) {
       await api(`/api/${name}/${encodeURIComponent(b.dataset.del)}`, { method: 'DELETE' }); toast('Deleted'); reload();
     }
     if (b.dataset.enroll) { const [type, id] = b.dataset.enroll.split(':'); enrollDialog(type, id, rows.find(r => r.id === id)?.name, reload); }
+    if (b.dataset.history) historyDialog(rows.find(r => r.id === b.dataset.history));
+    if (b.dataset.import) importDialog(reload);
     if (b.dataset.log) editForm('maintenance', { issueId: b.dataset.log, workstationId: rows.find(r => r.id === b.dataset.log)?.workstationId }, () => toast('Action logged'), true);
   });
   return { reload };
@@ -414,7 +429,13 @@ function pcDialog(p, refresh) {
 // ------------------------------------------------------------------ PAGES
 async function overview() {
   const v = $('#view');
+  const mine = me.role === 'instructor'
+    ? `<div class="panel"><div class="panel-head"><h3>${icon('list')} My classes today</h3><a href="#/class-attendance">Open attendance sheet</a></div><div class="panel-body" id="mine"></div></div>`
+    : me.role === 'technician'
+      ? `<div class="panel"><div class="panel-head"><h3>${icon('wrench')} Assigned to me</h3><a href="#/issues">All error reports</a></div><div class="table-wrap" id="mine"></div></div>` : '';
   v.innerHTML = `<div class="stats" id="stats"></div>
+    <div class="two"><div class="panel"><div class="panel-head"><h3>${icon('bell')} Alerts</h3><span class="muted" id="alertCount"></span></div><div class="panel-body" id="alerts"></div></div>
+    ${mine || `<div class="panel"><div class="panel-head"><h3>${icon('trend')} Attendance this week</h3><a href="#/analytics">Analytics</a></div><div class="panel-body" id="trend"></div></div>`}</div>
     <div class="panel"><div class="panel-head"><h3>${icon('map')} Interactive laboratory map</h3><span class="muted">Click a PC for details · updates every 5 s</span></div><div class="panel-body" id="mapBox"></div></div>
     <div class="two"><div class="panel"><div class="panel-head"><h3>${icon('users')} Active users</h3></div><div class="table-wrap" id="active"></div></div>
     <div class="panel"><div class="panel-head"><h3>${icon('alert')} Open error reports</h3><a href="#/issues">View all</a></div><div class="table-wrap" id="openIssues"></div></div></div>`;
@@ -429,6 +450,7 @@ async function overview() {
     $('#mapBox').innerHTML = mapHtml(pcs);
     const act = pcs.filter(p => p.session);
     $('#active').innerHTML = act.length ? `<table><tr><th>Student</th><th>PC</th><th>Time in</th></tr>${act.map(p => `<tr><td>${person(p.session.studentName, p.session.studentId)}</td><td>${esc(p.label)}</td><td>${time(p.session.timeIn)}</td></tr>`).join('')}</table>` : emptyState('No one is using the lab right now.', 'users');
+    await overviewExtras();
     const open = issues.rows.filter(i => i.status !== 'resolved').slice(0, 8);
     $('#openIssues').innerHTML = open.length ? `<table><tr><th>PC</th><th>Problem</th><th>Status</th></tr>${open.map(i => `<tr><td>${esc(i.workstationId ?? '')}</td><td>${esc(i.description)}</td><td>${badge(i.status)}</td></tr>`).join('')}</table>` : emptyState('No open error reports.', 'check');
   });
@@ -577,7 +599,19 @@ async function settingsPage() {
   v.innerHTML = `<form class="card" id="set" style="max-width:560px;display:grid;gap:16px"><h3 style="display:flex;gap:10px;align-items:center">${icon('monitor')} Kiosk tablet</h3>
     <label>Auto-assign a PC after (seconds)<input type="number" name="autoAssignAfterSeconds" min="10" max="300" value="${s.autoAssignAfterSeconds}"></label>
     <label>Welcome screen timeout (seconds)<input type="number" name="welcomeTimeoutSeconds" min="10" max="120" value="${s.welcomeTimeoutSeconds}"></label>
-    <button class="btn primary">Save</button></form>`;
+    <button class="btn primary">Save</button></form>
+    <div class="panel"><div class="panel-head"><h3>${icon('tablet')} Kiosk tablets</h3><span class="muted">Unpair a lost or replaced tablet</span></div><div class="table-wrap" id="kiosks"></div></div>
+    <div class="card" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><span class="stat t-blue" style="border:0;box-shadow:none;padding:0;display:block"><span class="ic">${icon('database')}</span></span>
+      <div style="flex:1;min-width:220px"><b>Database backup</b><p class="muted" style="margin:4px 0 0">Download a complete copy of all records (students, attendance, reports, inventory). Keep it on a USB drive.</p></div>
+      <button class="btn primary" id="backup">${icon('download')} Download backup</button></div>`;
+  const drawKiosks = run(async () => {
+    const k = (await api('/api/kiosks')).rows;
+    $('#kiosks').innerHTML = k.length ? `<table><tr><th>Tablet</th><th>Paired</th><th>Login valid until</th><th class="actions"></th></tr>${k.map(x => `<tr><td>${esc(x.name)}</td><td>${fmt(x.createdAt)}</td><td>${x.expiresAt ? fmt(x.expiresAt) : badge('inactive', 'Signed out')}</td>
+      <td class="actions"><button class="btn small danger" data-unpair="${esc(x.id)}">Unpair</button></td></tr>`).join('')}</table>` : emptyState('No tablets paired yet.', 'tablet');
+  });
+  drawKiosks();
+  $('#kiosks').onclick = run(async e => { const id = e.target.dataset.unpair; if (id && confirm('Unpair this tablet? It will need admin setup again.')) { await api(`/api/kiosks/${id}`, { method: 'DELETE' }); toast('Tablet unpaired'); drawKiosks(); } });
+  $('#backup').onclick = () => download('/api/backup');
   $('#set').onsubmit = run(async e => {
     e.preventDefault(); const f = new FormData(e.target);
     await api('/api/settings/kiosk', { method: 'PUT', body: { autoAssignAfterSeconds: Number(f.get('autoAssignAfterSeconds')), welcomeTimeoutSeconds: Number(f.get('welcomeTimeoutSeconds')) } });
@@ -591,6 +625,194 @@ async function auditPage() {
   $('#view').innerHTML = `<div class="panel"><div class="panel-head"><h3>${icon('activity')} Recent activity</h3><span class="muted">Last 500 events</span></div><div class="table-wrap"><table><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr>
     ${r.rows.map(a => { const who = String(a.actor).split(':')[0]; return `<tr><td>${fmt(a.at)}</td><td>${badge(tone[who] ?? 'inactive', who)}</td>
       <td><b>${esc(a.action)}</b></td><td class="muted">${esc(String(a.target ?? '').slice(0, 13))}</td><td class="muted">${esc(a.detail ?? '')}</td></tr>`; }).join('')}</table></div></div>`;
+}
+
+// ------------------------------------------------------------------ CHARTS (inline SVG)
+function lineChart(points, { key = 'sessions', height = 180 } = {}) {
+  if (!points.length) return emptyState('No data yet.', 'trend');
+  const w = 640, h = height, pad = 28, max = Math.max(1, ...points.map(p => p[key]));
+  const x = i => pad + (i * (w - pad * 2)) / Math.max(1, points.length - 1), y = v => h - pad - (v / max) * (h - pad * 2);
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(points.length - 1)},${h - pad} L${x(0)},${h - pad} Z`;
+  const ticks = [0, Math.round(max / 2), max];
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block" role="img" aria-label="Trend chart">
+    <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--brand-2)" stop-opacity=".35"/><stop offset="1" stop-color="var(--brand-2)" stop-opacity="0"/></linearGradient></defs>
+    ${ticks.map(t => `<line x1="${pad}" x2="${w - pad}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-dasharray="3 4"/><text x="${pad - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${t}</text>`).join('')}
+    <path d="${area}" fill="url(#g)"/><path d="${line}" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linejoin="round"/>
+    ${points.map((p, i) => `<circle cx="${x(i)}" cy="${y(p[key])}" r="3.5" fill="var(--surface)" stroke="var(--brand)" stroke-width="2"><title>${esc(p.date ?? p.hour)}: ${p[key]}</title></circle>`).join('')}
+    ${points.map((p, i) => (i % Math.ceil(points.length / 7) === 0 || i === points.length - 1 ? `<text x="${x(i)}" y="${h - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${esc(p.date ? new Date(p.date + 'T00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : p.hour)}</text>` : '')).join('')}
+  </svg>`;
+}
+function columnChart(items, { labelKey, valueKey, fmtLabel = v => v }) {
+  const max = Math.max(1, ...items.map(i => i[valueKey]));
+  return `<div style="display:flex;align-items:flex-end;gap:6px;height:170px;padding-top:10px">${items.map(i => `<div style="flex:1;display:grid;justify-items:center;gap:6px;align-self:stretch;align-content:end" title="${esc(fmtLabel(i[labelKey]))}: ${i[valueKey]}">
+    <span class="muted" style="font-size:11px">${i[valueKey] || ''}</span>
+    <span style="width:100%;max-width:28px;height:${Math.max(2, (i[valueKey] / max) * 120)}px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--brand-2),var(--brand))"></span>
+    <span class="muted" style="font-size:11px">${esc(fmtLabel(i[labelKey]))}</span></div>`).join('')}</div>`;
+}
+function barList(items, unit = 'sessions') {
+  if (!items.length) return emptyState('No data yet.', 'chart');
+  const max = Math.max(1, ...items.map(i => i.sessions));
+  return items.slice(0, 8).map(i => `<div class="bar-row"><span title="${esc(i.name)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.name)}</span>
+    <span class="bar"><span style="width:${Math.max(2, (i.sessions / max) * 100)}%"></span></span><span class="muted">${i.sessions} ${unit}</span></div>`).join('');
+}
+
+// ------------------------------------------------------------------ OVERVIEW EXTRAS (role-based)
+async function overviewExtras() {
+  const a = (await api('/api/alerts')).rows;
+  const tone = { danger: 't-red', warning: 't-amber', info: 't-blue' };
+  $('#alertCount').textContent = a.length ? `${a.length} active` : '';
+  $('#alerts').innerHTML = a.length ? `<div style="display:grid;gap:10px;max-height:260px;overflow:auto">${a.map(x => `<div class="stat ${tone[x.level]}" style="grid-template-columns:auto 1fr;box-shadow:none;padding:10px 12px;align-items:center">
+      <span class="ic" style="grid-row:auto;width:34px;height:34px">${icon(x.level === 'danger' ? 'alert' : x.kind === 'offline' ? 'wifiOff' : x.kind === 'maintenance' ? 'wrench' : x.kind === 'defective' ? 'box' : 'clock')}</span>
+      <span style="color:var(--ink);font-size:14px">${esc(x.text)}</span></div>`).join('')}</div>` : emptyState('All clear — no alerts.', 'check');
+  if ($('#trend')) $('#trend').innerHTML = lineChart((await api('/api/analytics?days=7')).daily);
+  if ($('#mine') && me.role === 'instructor') {
+    const c = (await api('/api/my/classes')).rows;
+    $('#mine').innerHTML = c.length ? `<div style="display:grid;gap:10px">${c.map(x => `<a href="#/class-attendance?class=${esc(x.id)}" class="stat t-violet" style="text-decoration:none;color:inherit;box-shadow:none;grid-template-columns:1fr auto">
+      <span><b style="font-size:16px">${esc(x.code)} · ${esc(x.section)}</b><br><span class="muted">${esc(x.start_time)}–${esc(x.end_time)} · ${esc(x.title)}</span></span>
+      <span style="text-align:right">${badge('active', `${x.present + x.late} present`)}<br>${badge('inactive', `${x.absent} absent`)}</span></a>`).join('')}</div>`
+      : emptyState('You have no classes scheduled today.', 'calendar');
+  }
+  if ($('#mine') && me.role === 'technician') {
+    const r = (await api('/api/my/issues')).rows;
+    $('#mine').innerHTML = r.length ? `<table><tr><th>PC</th><th>Problem</th><th>Reported</th><th>Status</th></tr>${r.map(i => `<tr><td>${esc(i.workstationId ?? '')}</td><td>${esc(i.description)}</td><td>${fmt(i.createdAt)}</td><td>${badge(i.status)}</td></tr>`).join('')}</table>`
+      : emptyState('Nothing assigned to you. 👍', 'check');
+  }
+}
+
+// ------------------------------------------------------------------ ANALYTICS
+async function analyticsPage() {
+  const v = $('#view');
+  v.innerHTML = `<form class="toolbar" id="flt"><label>Period<select name="days"><option value="7">Last 7 days</option><option value="14" selected>Last 14 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></label>
+    <span class="spacer"></span><button class="btn" type="button" id="pr">${icon('printer')} Print / PDF</button></form><div id="out" style="display:grid;gap:22px"></div>`;
+  const load = run(async () => {
+    const a = await api(`/api/analytics?days=${$('#flt').days.value}`);
+    $('#out').innerHTML = `<h3 class="print-title">ComLab analytics · ${a.from} to ${a.to}</h3>
+      <div class="stats">${stat(a.totals.sessions, 'Lab sessions', 'calendar', 't-blue')}${stat(a.totals.students, 'Unique students', 'users', 't-violet')}
+        ${stat(a.totals.hours, 'Computer hours', 'clock', 't-green')}${stat(`${a.totals.avgMinutes} min`, 'Average session', 'activity', 't-amber')}${stat(`${a.totals.autoAssignedPct}%`, 'Auto-assigned', 'grid', 't-grey')}</div>
+      <div class="panel"><div class="panel-head"><h3>${icon('trend')} Daily attendance</h3><span class="muted">${a.from} → ${a.to}</span></div><div class="panel-body">${lineChart(a.daily)}</div></div>
+      <div class="two"><div class="panel"><div class="panel-head"><h3>${icon('clock')} Busiest hours</h3><span class="muted">Check-ins by hour</span></div><div class="panel-body">${columnChart(a.hours, { labelKey: 'hour', valueKey: 'sessions', fmtLabel: hr => (hr % 12 || 12) + (hr < 12 ? 'a' : 'p') })}</div></div>
+      <div class="panel"><div class="panel-head"><h3>${icon('layers')} By section</h3></div><div class="panel-body">${barList(a.sections)}</div></div></div>
+      <div class="panel"><div class="panel-head"><h3>${icon('book')} By subject</h3></div><div class="panel-body">${barList(a.subjects)}</div></div>`;
+  });
+  $('#flt').onchange = load;
+  $('#pr').onclick = () => print();
+  await load();
+}
+
+// ------------------------------------------------------------------ CLASS ATTENDANCE SHEET
+async function classAttendancePage() {
+  const [classes, subjects, sections] = await Promise.all([lookup('classes'), lookup('subjects'), lookup('sections')]);
+  const name = c => `${subjects.find(s => s.id === c.subjectId)?.code ?? '?'} · ${sections.find(s => s.id === c.sectionId)?.name ?? '?'} · ${DAYS[c.dayOfWeek].slice(0, 3)} ${c.startTime}–${c.endTime}`;
+  const mineFirst = classes.slice().sort((a, b) => (b.instructorId === me.id) - (a.instructorId === me.id) || a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime));
+  const todayDow = new Date().getDay();
+  const wanted = new URLSearchParams(location.hash.split('?')[1] ?? '').get('class')
+    ?? (mineFirst.find(c => c.dayOfWeek === todayDow && c.instructorId === me.id) ?? mineFirst.find(c => c.dayOfWeek === todayDow) ?? mineFirst[0]).id;
+  const v = $('#view');
+  if (!classes.length) { v.innerHTML = `<div class="card">${emptyState('No class schedules yet. Add them under Class schedules.', 'clock')}</div>`; return; }
+  v.innerHTML = `<form class="toolbar" id="flt"><label class="grow">Class<select name="classId">${mineFirst.map(c => `<option value="${esc(c.id)}" ${c.id === wanted ? 'selected' : ''}>${esc(name(c))}${c.instructorId === me.id ? ' (mine)' : ''}</option>`).join('')}</select></label>
+    <label>Date<input type="date" name="date" value="${today()}"></label><span class="spacer"></span>
+    <button class="btn" type="button" id="csv">${icon('download')} CSV</button><button class="btn" type="button" id="pr">${icon('printer')} Print / PDF</button></form><div id="out" style="display:grid;gap:22px"></div>`;
+  let last = null;
+  const load = run(async () => {
+    const f = $('#flt');
+    last = await api(`/api/class-attendance?classId=${encodeURIComponent(f.classId.value)}&date=${f.date.value}`);
+    const c = last.class, n = last.counts, total = last.roster.length;
+    const wrongDay = new Date(f.date.value + 'T12:00').getDay() !== c.day;
+    $('#out').innerHTML = `<h3 class="print-title">Attendance — ${esc(c.subject)} ${esc(c.title)} · ${esc(c.section)} · ${esc(f.date.value)} (${esc(c.start)}–${esc(c.end)})</h3>
+      ${wrongDay ? `<div class="notice">${icon('alert')}<div>This class meets on <b>${DAYS[c.day]}</b>, but the selected date is a ${DAYS[new Date(f.date.value + 'T12:00').getDay()]}.</div></div>` : ''}
+      <div class="stats">${stat(n.present, 'Present', 'check', 't-green')}${stat(n.late, 'Late (15+ min)', 'clock', 't-amber')}${stat(n.absent, 'Absent', 'user', 't-red')}
+        ${stat(total ? `${Math.round(((n.present + n.late) / total) * 100)}%` : '—', 'Attendance rate', 'trend', 't-blue')}</div>
+      <div class="panel"><div class="panel-head"><h3>${icon('list')} ${esc(c.subject)} · ${esc(c.section)}</h3><span class="muted">${esc(c.instructor ?? 'No instructor')} · ${DAYS[c.day]} ${esc(c.start)}–${esc(c.end)}</span></div>
+      <div class="table-wrap"><table><tr><th>#</th><th>Student</th><th>Status</th><th>PC</th><th>Time in</th><th>Time out</th></tr>
+      ${last.roster.map((r, i) => `<tr><td class="muted">${i + 1}</td><td>${person(r.name, r.studentId)}</td><td>${badge({ present: 'active', late: 'open', absent: 'defective' }[r.status], label(r.status))}</td>
+        <td>${esc(r.workstationId ?? '—')}</td><td>${r.timeIn ? time(r.timeIn) : '—'}</td><td>${r.timeOut ? time(r.timeOut) : r.timeIn ? badge('IN_USE', 'In lab') : '—'}</td></tr>`).join('')
+        || `<tr><td colspan="6">${emptyState('No students in this section yet.', 'users')}</td></tr>`}</table></div></div>`;
+  });
+  $('#flt').onchange = load;
+  $('#pr').onclick = () => print();
+  $('#csv').onclick = () => {
+    if (!last) return;
+    const rows = [['No.', 'Student ID', 'Name', 'Status', 'PC', 'Time in', 'Time out'], ...last.roster.map((r, i) => [i + 1, r.studentId, r.name, r.status, r.workstationId ?? '', r.timeIn ? fmt(r.timeIn) : '', r.timeOut ? fmt(r.timeOut) : ''])];
+    const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replaceAll('"', '""')}"`).join(',')).join('\r\n');
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: `Attendance ${last.class.subject} ${last.class.section} ${last.date}.csv` });
+    a.click();
+  };
+  await load();
+}
+
+// ------------------------------------------------------------------ ISSUE HISTORY
+async function historyDialog(issue) {
+  if (!issue) return;
+  const h = await api(`/api/issues/${issue.id}/history`);
+  const events = [
+    { at: issue.createdAt, title: 'Reported', text: `${issue.description} — by ${String(issue.reportedBy ?? '').split(':')[0] || 'staff'}`, tone: 't-red', ic: 'alert' },
+    ...h.rows.map(m => ({ at: m.at, title: m.action, text: [m.remarks, m.technician].filter(Boolean).join(' — '), tone: 't-blue', ic: 'wrench' })),
+    ...(issue.status === 'resolved' ? [{ at: issue.resolvedAt ?? issue.updatedAt, title: 'Resolved', text: issue.resolution, tone: 't-green', ic: 'check' }] : []),
+  ].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  openModal(`<h3>Error report history</h3><p class="muted" style="margin:0">${esc(issue.workstationId ?? 'Lab')} · ${label(issue.category)} · ${badge(issue.status)}</p>
+    <div style="display:grid;gap:4px">${events.map(e => `<div class="stat ${e.tone}" style="grid-template-columns:auto 1fr;box-shadow:none;border:0;padding:8px 0;align-items:start">
+      <span class="ic" style="grid-row:auto;width:34px;height:34px">${icon(e.ic)}</span><span><b style="font-size:14px">${esc(e.title)}</b> <span class="muted" style="font-size:12px">${fmt(e.at)}</span><br><span style="color:var(--ink-2);font-size:14px">${esc(e.text ?? '')}</span></span></div>`).join('')}</div>
+    <footer><button class="btn primary" value="ok">Close</button></footer>`);
+}
+
+// ------------------------------------------------------------------ STUDENT IMPORT
+function parseCsv(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; }
+    else if (c === '"') q = true; else if (c === ',' || c === ';' || c === '\t') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); if (row.some(x => x.trim())) rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  row.push(cell); if (row.some(x => x.trim())) rows.push(row);
+  return rows;
+}
+function importDialog(onDone) {
+  const f = openModal(`<h3>Import students</h3>
+    <p class="muted" style="margin:0">Upload a CSV file with columns <b>Student ID, Name, Section</b>. In Excel use <i>File → Save As → CSV</i>. Existing students are updated; missing sections are created.</p>
+    <p style="margin:0"><a href="#" id="tpl">${icon('download')} Download template</a></p>
+    <label>CSV file<input type="file" id="file" accept=".csv,text/csv"></label><div id="preview"></div><p class="error" id="formErr"></p>
+    <footer><button class="btn" value="cancel">Cancel</button><button class="btn primary" id="go" disabled>Import</button></footer>`);
+  let rows = [];
+  $('#tpl', f).onclick = e => { e.preventDefault(); const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['﻿Student ID,Name,Section\r\n2024-00001,Juan Dela Cruz,BSIT 2A\r\n'], { type: 'text/csv' })), download: 'students-template.csv' }); a.click(); };
+  $('#file', f).onchange = async e => {
+    const all = parseCsv((await e.target.files[0].text()).replace(/^﻿/, ''));
+    const head = all[0]?.map(h => h.toLowerCase()) ?? [];
+    const hasHead = head.some(h => /name|student|section|id/.test(h));
+    const idx = k => (hasHead ? head.findIndex(h => h.includes(k)) : { id: 0, name: 1, section: 2 }[k]);
+    const iId = hasHead ? head.findIndex(h => /id|no|number/.test(h)) : 0, iName = idx('name'), iSec = idx('section');
+    rows = all.slice(hasHead ? 1 : 0).map(r => ({ id: (r[iId] ?? '').trim(), name: (r[iName] ?? '').trim(), section: iSec >= 0 ? (r[iSec] ?? '').trim() : '' })).filter(r => r.id && r.name);
+    $('#preview', f).innerHTML = rows.length ? `<p class="muted">${rows.length} student(s) found. First rows:</p><div class="table-wrap"><table><tr><th>ID</th><th>Name</th><th>Section</th></tr>${rows.slice(0, 5).map(r => `<tr><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${esc(r.section)}</td></tr>`).join('')}</table></div>` : '<p class="error">No rows with both an ID and a name were found.</p>';
+    $('#go', f).disabled = !rows.length;
+  };
+  $('#go', f).onclick = async e => {
+    e.preventDefault();
+    try {
+      const r = await api('/api/students/import', { method: 'POST', body: { rows } });
+      closeModal(); toast(`Imported: ${r.created} new, ${r.updated} updated, ${r.sectionsCreated} new section(s)`); invalidate('sections'); onDone?.();
+    } catch (err) { $('#formErr', f).textContent = err.message; }
+  };
+}
+
+// ------------------------------------------------------------------ MY ACCOUNT
+async function accountPage() {
+  $('#view').innerHTML = `<div class="two"><div class="card" style="display:grid;gap:14px;align-content:start">
+      <div class="person"><span class="avatar" style="width:56px;height:56px;font-size:20px">${esc(initials(me.name))}</span><span><b style="font-size:18px">${esc(me.name)}</b><br>${badge('in_progress', label(me.role))}</span></div>
+      <p class="muted" style="margin:0">${{ admin: 'Full access to users, records, settings and reports.', technician: 'Workstations, error reports, maintenance and inventory.', instructor: 'Attendance, class sheets, live lab monitoring and reports.' }[me.role]}</p>
+      <p class="muted" style="margin:0">Tip: ask the administrator to enroll your fingerprint so you can unlock staff tools at the kiosk.</p></div>
+    <form class="card" id="pw" style="display:grid;gap:14px"><h3 style="display:flex;gap:10px;align-items:center">${icon('shield')} Change password</h3>
+      <label>Current password<input type="password" name="current" required autocomplete="current-password"></label>
+      <label>New password<input type="password" name="next" required minlength="8" autocomplete="new-password"></label>
+      <label>Repeat new password<input type="password" name="again" required minlength="8" autocomplete="new-password"></label>
+      <p class="error" id="pwErr"></p><button class="btn primary">Update password</button></form></div>`;
+  $('#pw').onsubmit = async e => {
+    e.preventDefault(); const f = new FormData(e.target);
+    if (f.get('next') !== f.get('again')) return ($('#pwErr').textContent = 'The new passwords do not match.');
+    try { await api('/api/me/password', { method: 'POST', body: { current: f.get('current'), next: f.get('next') } }); toast('Password changed. Please sign in again.'); setTimeout(signOut, 1200); }
+    catch (err) { $('#pwErr').textContent = err.message; }
+  };
 }
 
 // ------------------------------------------------------------------ BOOT
