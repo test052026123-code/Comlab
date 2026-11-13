@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ComLab Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='4' width='20' height='13' rx='2' fill='%23075563'/%3E%3Crect x='8' y='18' width='8' height='2' fill='%23075563'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="loginForm" class="card login-card">
+      <h1>ComLab</h1>
+      <p class="muted">Computer Laboratory Management</p>
+      <label>Username<input name="username" autocomplete="username" required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn primary" type="submit">Sign in</button>
+      <p id="loginError" class="error" role="alert"></p>
+    </form>
+  </div>
+
+  <div id="shell" class="shell" hidden>
+    <aside class="side">
+      <div class="brand">ComLab<small id="who"></small></div>
+      <nav id="nav"></nav>
+      <button id="logout" class="btn ghost">Sign out</button>
+    </aside>
+    <main>
+      <header class="top">
+        <button id="menu" class="btn ghost menu" aria-label="Menu">☰</button>
+        <h2 id="title"></h2>
+        <span id="clock" class="muted"></span>
+      </header>
+      <section id="view"></section>
+    </main>
+  </div>
+
+  <dialog id="modal"><form method="dialog" id="modalForm"></form></dialog>
+  <div id="toast" role="status"></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

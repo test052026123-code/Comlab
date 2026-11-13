@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import helmet from 'helmet';
 import { z } from 'zod';
@@ -5,6 +6,8 @@ import { authenticate, login, loginWithScan, logout, pairKiosk } from './auth.js
 import { crud, RESOURCES } from './crud.js';
 import { Fault, requireThat } from './errors.js';
 import * as lab from './lab.js';
+import { REPORTS, REPORT_ROLES } from './reports.js';
+import { toXlsx } from './xlsx.js';
 
 const uuid = z.string().uuid();
 const wsId = z.string().regex(/^[A-Z0-9-]{2,16}$/);
@@ -12,7 +15,9 @@ const wsId = z.string().regex(/^[A-Z0-9-]{2,16}$/);
 export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerprints = null } = {}) {
   const app = express();
   app.disable('x-powered-by');
-  app.use(helmet(), express.json({ limit: '64kb' }));
+  // Plain HTTP on the lab LAN: do not tell browsers to upgrade to HTTPS.
+  app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } }, strictTransportSecurity: false }), express.json({ limit: '64kb' }));
+  app.use(express.static(fileURLToPath(new URL('../public', import.meta.url)), { index: 'index.html', maxAge: 0 }));
   const h = fn => async (req, res, next) => { try { res.json(await fn(req, res)); } catch (e) { next(e); } };
   const roles = (...allowed) => (req, res, next) =>
     allowed.includes(req.actor.role) ? next() : next(new Fault(403, 'Your role cannot do this.'));
@@ -105,6 +110,22 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerpri
     try { res.type('text/csv').attachment('attendance.csv').send('﻿' + toCsv(attendance(db, req.query))); } catch (e) { next(e); }
   });
   app.get('/api/summary', staff, h(() => summary(db)));
+  // Names only, for "assigned technician" / "instructor" dropdowns (no usernames or slots).
+  app.get('/api/staff-directory', staff, h(() => ({ rows: db.prepare('SELECT id, name, role FROM users WHERE active = 1 ORDER BY name').all() })));
+  // Reports: JSON for the dashboard, .xlsx for Excel, .csv for anything else.
+  app.get('/api/reports/:name', staff, (req, res, next) => {
+    try {
+      const m = /^(\w+?)(?:\.(xlsx|csv))?$/.exec(req.params.name), R = m && REPORTS[m[1]];
+      requireThat(R, 'Unknown report.', 404);
+      requireThat(REPORT_ROLES[m[1]].includes(req.actor.role), 'Your role cannot view this report.', 403);
+      const rows = R.rows(db, req.query), stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      if (m[2] === 'xlsx') return res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .attachment(`ComLab ${R.title} ${stamp}.xlsx`).send(toXlsx(R.title, R.columns, rows));
+      if (m[2] === 'csv') return res.type('text/csv').attachment(`ComLab ${R.title} ${stamp}.csv`)
+        .send('﻿' + toCsv(rows.map(r => Object.fromEntries(R.columns.map(([k, label]) => [label, r[k]])))));
+      res.json({ title: R.title, columns: R.columns, rows });
+    } catch (e) { next(e); }
+  });
   app.get('/api/audit', roles('admin'), h(() => ({ rows: db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT 500').all() })));
   app.put('/api/settings/kiosk', roles('admin'), h(req => {
     const s = z.object({ autoAssignAfterSeconds: z.number().int().min(10).max(300), welcomeTimeoutSeconds: z.number().int().min(10).max(120) }).parse(req.body);
