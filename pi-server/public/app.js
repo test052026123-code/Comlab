@@ -8,7 +8,62 @@ const today = () => new Date().toLocaleDateString('en-CA');
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const STATUS = { IDLE: 'Available', OFF: 'Off', IN_USE: 'In use', MAINTENANCE: 'Maintenance', OFFLINE: 'Offline', DISABLED: 'Disabled', UNKNOWN: 'Unknown' };
 const label = s => STATUS[s] ?? String(s ?? '').replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
-const badge = s => `<span class="badge s-${esc(s)}">${esc(label(s))}</span>`;
+const badge = (s, text) => `<span class="badge s-${esc(s)}">${esc(text ?? label(s))}</span>`;
+
+// Inline icon set (stroke icons, 24px grid) — bundled so the dashboard needs no CDN.
+const ICONS = {
+  monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  grid: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/>',
+  map: '<path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3zM9 3v15M15 6v15"/>',
+  alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+  wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+  box: '<path d="M21 8 12 3 3 8v8l9 5 9-5V8z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
+  chart: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  layers: '<path d="m12 2 10 5-10 5L2 7l10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  fingerprint: '<path d="M12 11v3a8 8 0 0 1-1 4M8 11a4 4 0 0 1 8 0v1M5 12a7 7 0 0 1 14 0v2a12 12 0 0 1-1 4M7.5 20a12 12 0 0 0 1.5-6v-3M12 2a10 10 0 0 1 10 10M2 12A10 10 0 0 1 6 4"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  printer: '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  power: '<path d="M18.4 6.6a9 9 0 1 1-12.8 0M12 2v10"/>',
+  wifiOff: '<path d="m2 2 20 20M8.5 16.5a5 5 0 0 1 7 0M2 8.8a15 15 0 0 1 4.2-2.7M10.7 5.1A15 15 0 0 1 22 8.8M5 12.9a10 10 0 0 1 5.2-2.8M12 20h.01"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
+  move: '<path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/>',
+};
+const icon = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] ?? ''}</svg>`;
+const initials = name => String(name ?? '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+const person = (name, sub) => `<span class="person"><span class="avatar">${esc(initials(name))}</span><span>${esc(name)}${sub ? `<br><small class="muted">${esc(sub)}</small>` : ''}</span></span>`;
+const emptyState = (text, ic = 'inbox') => `<div class="empty">${icon(ic)}${esc(text)}</div>`;
+const stat = (value, text, ic, tone = '') => `<div class="stat ${tone}"><b>${esc(value)}</b><span class="ic">${icon(ic)}</span><span>${esc(text)}</span></div>`;
+document.querySelectorAll('[data-icon]').forEach(el => (el.innerHTML = icon(el.dataset.icon)));
+
+// Theme: follows the system unless the user picks one (remembered per browser).
+const THEME_KEY = 'comlab.theme';
+function applyTheme(t) {
+  if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  const dark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  $('#theme').innerHTML = `${icon(dark ? 'sun' : 'moon')} ${dark ? 'Light' : 'Dark'} mode`;
+}
+try { applyTheme(localStorage.getItem(THEME_KEY)); } catch { applyTheme(null); }
+$('#theme').onclick = () => {
+  const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  const next = dark ? 'light' : 'dark';
+  try { localStorage.setItem(THEME_KEY, next); } catch {}
+  applyTheme(next);
+};
+$('#logout').innerHTML = `${icon('logout')} Sign out`;
 
 let token = sessionStorage.getItem('comlab.token');
 let me = null, timer = null;
@@ -55,34 +110,36 @@ $('#menu').onclick = () => $('.side').classList.toggle('open');
 
 // ------------------------------------------------------------------ NAV
 const ALL = ['admin', 'technician', 'instructor'], TECH = ['admin', 'technician'], ADMIN = ['admin'];
+// [id, title, roles, render, icon, group]
 const PAGES = [
   ['Monitoring'],
-  ['overview', 'Overview', ALL, overview],
-  ['attendance', 'Attendance', ALL, attendancePage],
+  ['overview', 'Overview', ALL, overview, 'grid'],
+  ['attendance', 'Attendance', ALL, attendancePage, 'calendar'],
   ['Laboratory'],
-  ['workstations', 'Workstations & map', ALL, workstationsPage],
-  ['issues', 'Error reports', ALL, () => crudPage('issues')],
-  ['maintenance', 'Maintenance logs', TECH, () => crudPage('maintenance')],
-  ['inventory', 'Inventory', TECH, () => crudPage('inventory')],
-  ['reports', 'Reports & analytics', ALL, reportsPage],
+  ['workstations', 'Workstations & map', ALL, workstationsPage, 'map'],
+  ['issues', 'Error reports', ALL, () => crudPage('issues'), 'alert'],
+  ['maintenance', 'Maintenance logs', TECH, () => crudPage('maintenance'), 'wrench'],
+  ['inventory', 'Inventory', TECH, () => crudPage('inventory'), 'box'],
+  ['reports', 'Reports & analytics', ALL, reportsPage, 'chart'],
   ['Records'],
-  ['students', 'Students', ALL, () => crudPage('students')],
-  ['classes', 'Class schedules', ALL, () => crudPage('classes')],
-  ['sections', 'Sections', ALL, () => crudPage('sections')],
-  ['subjects', 'Subjects', ALL, () => crudPage('subjects')],
+  ['students', 'Students', ALL, () => crudPage('students'), 'users'],
+  ['classes', 'Class schedules', ALL, () => crudPage('classes'), 'clock'],
+  ['sections', 'Sections', ALL, () => crudPage('sections'), 'layers'],
+  ['subjects', 'Subjects', ALL, () => crudPage('subjects'), 'book'],
   ['System'],
-  ['users', 'Staff accounts', ADMIN, () => crudPage('users')],
-  ['fingerprints', 'Fingerprint sensor', ADMIN, fingerprintsPage],
-  ['settings', 'Settings', ADMIN, settingsPage],
-  ['audit', 'Activity log', ADMIN, auditPage],
+  ['users', 'Staff accounts', ADMIN, () => crudPage('users'), 'shield'],
+  ['fingerprints', 'Fingerprint sensor', ADMIN, fingerprintsPage, 'fingerprint'],
+  ['settings', 'Settings', ADMIN, settingsPage, 'settings'],
+  ['audit', 'Activity log', ADMIN, auditPage, 'activity'],
 ];
+const groupOf = id => { let g = ''; for (const p of PAGES) { if (p.length === 1) g = p[0]; else if (p[0] === id) return g; } return ''; };
 function renderNav() {
   let html = '', pending = null;
   for (const p of PAGES) {
     if (p.length === 1) { pending = p[0]; continue; }
     if (!p[2].includes(me.role)) continue;
     if (pending) { html += `<div class="group">${pending}</div>`; pending = null; }
-    html += `<a href="#/${p[0]}" data-page="${p[0]}">${p[1]}</a>`;
+    html += `<a href="#/${p[0]}" data-page="${p[0]}">${icon(p[4])}<span>${p[1]}</span></a>`;
   }
   $('#nav').innerHTML = html;
 }
@@ -93,15 +150,18 @@ async function route() {
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.page === page[0]));
   $('.side').classList.remove('open');
   $('#title').textContent = page[1];
+  $('#crumb').textContent = groupOf(page[0]);
   $('#view').innerHTML = '<p class="muted">Loading…</p>';
   await run(page[3])();
 }
 window.addEventListener('hashchange', () => me && route());
-setInterval(() => ($('#clock').textContent = new Date().toLocaleString('en-PH', { weekday: 'short', hour: 'numeric', minute: '2-digit' })), 1000);
+const tick = () => ($('#clock').textContent = `Live · ${new Date().toLocaleString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+tick(); setInterval(tick, 15000);
 
 async function start() {
   try { me = await api('/me'); } catch { return signOut(); }
-  $('#who').textContent = `${me.name} · ${me.role}`;
+  $('#avatar').textContent = initials(me.name);
+  $('#avatar').title = `${me.name} · ${label(me.role)}`;
   $('#login').hidden = true; $('#shell').hidden = false;
   renderNav(); route();
 }
@@ -123,8 +183,9 @@ const RES = {
     title: 'Student', write: ADMIN,
     fields: [['id', 'Student ID', 'text', { key: true, placeholder: '2024-00123' }], ['name', 'Full name', 'text'], ['sectionId', 'Section', 'ref:sections'],
       ['active', 'Active', 'check', { default: true }]],
-    cols: [['id', 'Student ID'], ['name', 'Name'], ['sectionId', 'Section', 'ref:sections'], ['fingerprintSlot', 'Fingerprint', r => (r.fingerprintSlot != null ? `✅ Slot ${r.fingerprintSlot}` : '<span class="muted">Not enrolled</span>')],
-      ['active', 'Status', r => badge(r.active ? 'working' : 'disposed').replace(/Working|Disposed/, r.active ? 'Active' : 'Inactive')]],
+    cols: [['name', 'Student', r => person(r.name, r.id)], ['sectionId', 'Section', 'ref:sections'],
+      ['fingerprintSlot', 'Fingerprint', r => (r.fingerprintSlot != null ? badge('active', `Enrolled · slot ${r.fingerprintSlot}`) : badge('inactive', 'Not enrolled'))],
+      ['active', 'Status', r => badge(r.active ? 'active' : 'inactive', r.active ? 'Active' : 'Inactive')]],
     extra: r => (me.role === 'admin' ? `<button class="btn small" data-enroll="student:${esc(r.id)}">${r.fingerprintSlot != null ? 'Re-enroll' : 'Enroll'} finger</button>` : ''),
   },
   sections: {
@@ -180,8 +241,9 @@ const RES = {
     title: 'Staff account', write: ADMIN,
     fields: [['username', 'Username', 'text'], ['name', 'Full name', 'text'], ['role', 'Role', 'select', ['admin', 'technician', 'instructor']],
       ['password', 'Password (leave blank to keep)', 'password'], ['active', 'Active', 'check', { default: true }]],
-    cols: [['username', 'Username'], ['name', 'Name'], ['role', 'Role', r => label(r.role)],
-      ['fingerprintSlot', 'Fingerprint', r => (r.fingerprintSlot != null ? `✅ Slot ${r.fingerprintSlot}` : '<span class="muted">—</span>')], ['active', 'Active', r => (r.active ? 'Yes' : 'No')]],
+    cols: [['name', 'Name', r => person(r.name, '@' + r.username)], ['role', 'Role', r => badge({ admin: 'in_progress', technician: 'open', instructor: 'active' }[r.role], label(r.role))],
+      ['fingerprintSlot', 'Fingerprint', r => (r.fingerprintSlot != null ? badge('active', `Enrolled · slot ${r.fingerprintSlot}`) : badge('inactive', 'Not enrolled'))],
+      ['active', 'Status', r => badge(r.active ? 'active' : 'inactive', r.active ? 'Active' : 'Inactive')]],
     extra: r => `<button class="btn small" data-enroll="staff:${esc(r.id)}">${r.fingerprintSlot != null ? 'Re-enroll' : 'Enroll'} finger</button>`,
   },
 };
@@ -198,10 +260,11 @@ async function crudPage(name, { mount = $('#view'), rowsOverride } = {}) {
   const state = { q: '', f: {} };
   mount.innerHTML = `
     <div class="toolbar">
-      <label class="grow">Search<input id="q" placeholder="Type to filter…"></label>
+      <label class="grow search">Search${icon('search')}<input id="q" placeholder="Search ${esc(R.title.toLowerCase())}s…"></label>
       ${(R.filters ?? []).map(([k, opts]) => `<label>${label(k)}<select data-filter="${k}"><option value="">All</option>${opts.map(o => `<option value="${o}">${label(o)}</option>`).join('')}</select></label>`).join('')}
-      ${canWrite ? `<button class="btn primary" id="add">+ Add ${R.title.toLowerCase()}</button>` : ''}
+      ${canWrite ? `<button class="btn primary" id="add">${icon('plus')} Add ${R.title.toLowerCase()}</button>` : ''}
     </div>
+    <div class="count" id="count"></div>
     <div class="table-wrap"><table><thead><tr>${(R.cols ?? []).map(c => `<th>${c[1]}</th>`).join('')}<th class="actions"></th></tr></thead><tbody></tbody></table></div>`;
   const cell = (r, [k, , fn]) => {
     if (typeof fn === 'function') return fn(r);
@@ -213,7 +276,8 @@ async function crudPage(name, { mount = $('#view'), rowsOverride } = {}) {
     const shown = rows.filter(r => Object.entries(state.f).every(([k, v]) => !v || r[k] === v) && (!q || JSON.stringify(r).toLowerCase().includes(q)));
     $('tbody', mount).innerHTML = shown.length ? shown.map(r => `<tr>${R.cols.map(c => `<td>${cell(r, c)}</td>`).join('')}
       <td class="actions">${R.extra?.(r) ?? ''} ${canWrite ? `<button class="btn small" data-edit="${esc(r.id)}">Edit</button> <button class="btn small danger" data-del="${esc(r.id)}">Delete</button>` : ''}</td></tr>`).join('')
-      : `<tr><td colspan="${R.cols.length + 1}" class="empty">No records yet.</td></tr>`;
+      : `<tr><td colspan="${R.cols.length + 1}">${emptyState(rows.length ? 'Nothing matches your search.' : `No ${R.title.toLowerCase()}s yet.`)}</td></tr>`;
+    $('#count', mount).textContent = `${shown.length} of ${rows.length} record${rows.length === 1 ? '' : 's'}`;
   };
   draw();
   $('#q', mount).oninput = e => { state.q = e.target.value; draw(); };
@@ -282,14 +346,15 @@ $('#modal').addEventListener('close', () => $('#modal').dispatchEvent(new Event(
 // ------------------------------------------------------------------ FINGERPRINT ENROLL
 function enrollDialog(personType, personId, name, onDone) {
   const f = openModal(`<h3>Enroll fingerprint</h3><p class="muted">${esc(name ?? personId)}</p>
-    <div class="fp" id="fp"><div class="icon">☝️</div><div class="steps"><span></span><span></span><span></span></div><b id="fpMsg">Starting…</b></div>
+    <div class="fp waiting" id="fp"><div class="ring">${icon('fingerprint')}</div><div class="steps"><span></span><span></span><span></span></div><b id="fpMsg">Starting…</b>
+    <span class="muted">Place → lift → place the same finger again</span></div>
     <footer><button class="btn" value="cancel" id="fpCancel">Close</button></footer>`);
   let jobId = null, stop = false;
   $('#modal').addEventListener('closed', () => { stop = true; if (jobId) api(`/fingerprint/requests/${jobId}/cancel`, { method: 'POST' }).catch(() => {}); }, { once: true });
   const show = (msg, step, cls = '') => {
-    $('#fpMsg', f).textContent = msg; $('#fp', f).className = `fp ${cls}`;
+    $('#fpMsg', f).textContent = msg; $('#fp', f).className = `fp ${cls || 'waiting'}`;
     f.querySelectorAll('.steps span').forEach((s, i) => s.classList.toggle('on', i < step));
-    $('.icon', f).textContent = cls === 'done' ? '✅' : cls === 'error' ? '⚠️' : step === 2 ? '✋' : '☝️';
+    $('.ring', f).innerHTML = icon(cls === 'done' ? 'check' : cls === 'error' ? 'alert' : 'fingerprint');
   };
   (async () => {
     try {
@@ -310,11 +375,13 @@ function enrollDialog(personType, personId, name, onDone) {
 function mapHtml(pcs, { editing = false } = {}) {
   const placed = pcs.some(p => p.mapX || p.mapY) || editing;
   const tile = p => {
-    const who = p.session?.studentName ? `${esc(p.session.studentName)} · since ${time(p.session.timeIn)}` : (p.online ? `Power ${p.power}` : 'Node offline');
-    const pos = placed ? `left:${Math.min(p.mapX, 87)}%;top:${Math.min(p.mapY, 82)}%` : '';
-    return `<div class="pc s-${p.status}" data-pc="${esc(p.id)}" style="${pos}"><b>${esc(p.label)}</b><small>${esc(label(p.status))}</small><small>${who}</small></div>`;
+    const who = p.session?.studentName ? `${esc(p.session.studentName)} · ${time(p.session.timeIn)}` : (p.online ? `Power ${esc(p.power)}` : 'Node offline');
+    const pos = placed ? `left:${Math.min(p.mapX, 87)}%;top:${Math.min(p.mapY, 80)}%` : '';
+    const ic = p.status === 'OFFLINE' ? 'wifiOff' : p.status === 'MAINTENANCE' ? 'wrench' : p.status === 'OFF' ? 'power' : 'monitor';
+    return `<div class="pc s-${p.status}" data-pc="${esc(p.id)}" style="${pos}"><div class="pc-top"><b>${esc(p.label)}</b><span class="pc-ic">${icon(editing ? 'move' : ic)}</span></div>
+      ${badge(p.status)}<small style="margin-top:6px">${who}</small></div>`;
   };
-  return `<div class="map ${placed ? '' : 'grid'} ${editing ? 'editing' : ''}" id="map">${pcs.map(tile).join('') || '<p class="empty">No workstations yet. Add them under Workstations & map.</p>'}</div>
+  return `<div class="map ${placed ? '' : 'grid'} ${editing ? 'editing' : ''}" id="map">${pcs.map(tile).join('') || emptyState('No workstations yet. Add them under Workstations & map.', 'monitor')}</div>
     <div class="legend">${Object.keys(STATUS).slice(0, 6).map(s => `<span class="s-${s}"><i></i>${STATUS[s]}</span>`).join('')}</div>`;
 }
 
@@ -348,22 +415,22 @@ function pcDialog(p, refresh) {
 async function overview() {
   const v = $('#view');
   v.innerHTML = `<div class="stats" id="stats"></div>
-    <div><div class="section-head"><h3>Interactive laboratory map</h3><span class="muted">Live · updates every 5 s</span></div><div id="mapBox"></div></div>
-    <div class="two"><div><div class="section-head"><h3>Active users</h3></div><div class="table-wrap" id="active"></div></div>
-    <div><div class="section-head"><h3>Open error reports</h3><a href="#/issues">View all</a></div><div class="table-wrap" id="openIssues"></div></div></div>`;
+    <div class="panel"><div class="panel-head"><h3>${icon('map')} Interactive laboratory map</h3><span class="muted">Click a PC for details · updates every 5 s</span></div><div class="panel-body" id="mapBox"></div></div>
+    <div class="two"><div class="panel"><div class="panel-head"><h3>${icon('users')} Active users</h3></div><div class="table-wrap" id="active"></div></div>
+    <div class="panel"><div class="panel-head"><h3>${icon('alert')} Open error reports</h3><a href="#/issues">View all</a></div><div class="table-wrap" id="openIssues"></div></div></div>`;
   let pcs = [];
   const refresh = run(async () => {
     const [s, live, issues] = await Promise.all([api('/api/summary'), api('/workstations/live'), api('/api/issues')]);
     pcs = live.workstations;
     const w = s.workstations;
-    $('#stats').innerHTML = [[s.activeSessions, 'Active users'], [s.attendanceToday, 'Students today'], [`${w.idle + w.off}/${w.total}`, 'PCs available'],
-      [w.inUse, 'PCs in use'], [w.offline, 'PCs offline'], [w.maintenance, 'Maintenance'], [s.openIssues, 'Open error reports']]
-      .map(([n, l]) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`).join('');
+    $('#stats').innerHTML = stat(s.activeSessions, 'Active users', 'users', 't-blue') + stat(s.attendanceToday, 'Students today', 'calendar', 't-violet')
+      + stat(`${w.idle + w.off}/${w.total}`, 'PCs available', 'monitor', 't-green') + stat(w.offline, 'PCs offline', 'wifiOff', 't-grey')
+      + stat(w.maintenance, 'Under maintenance', 'wrench', 't-amber') + stat(s.openIssues, 'Open error reports', 'alert', s.openIssues ? 't-red' : 't-green');
     $('#mapBox').innerHTML = mapHtml(pcs);
     const act = pcs.filter(p => p.session);
-    $('#active').innerHTML = act.length ? `<table><tr><th>PC</th><th>Student</th><th>Since</th></tr>${act.map(p => `<tr><td>${esc(p.label)}</td><td>${esc(p.session.studentName)}</td><td>${time(p.session.timeIn)}</td></tr>`).join('')}</table>` : '<p class="empty">No one is using the lab.</p>';
+    $('#active').innerHTML = act.length ? `<table><tr><th>Student</th><th>PC</th><th>Time in</th></tr>${act.map(p => `<tr><td>${person(p.session.studentName, p.session.studentId)}</td><td>${esc(p.label)}</td><td>${time(p.session.timeIn)}</td></tr>`).join('')}</table>` : emptyState('No one is using the lab right now.', 'users');
     const open = issues.rows.filter(i => i.status !== 'resolved').slice(0, 8);
-    $('#openIssues').innerHTML = open.length ? `<table><tr><th>PC</th><th>Problem</th><th>Status</th></tr>${open.map(i => `<tr><td>${esc(i.workstationId ?? '')}</td><td>${esc(i.description)}</td><td>${badge(i.status)}</td></tr>`).join('')}</table>` : '<p class="empty">No open reports. 🎉</p>';
+    $('#openIssues').innerHTML = open.length ? `<table><tr><th>PC</th><th>Problem</th><th>Status</th></tr>${open.map(i => `<tr><td>${esc(i.workstationId ?? '')}</td><td>${esc(i.description)}</td><td>${badge(i.status)}</td></tr>`).join('')}</table>` : emptyState('No open error reports.', 'check');
   });
   await refresh();
   timer = setInterval(refresh, 5000);
@@ -372,19 +439,19 @@ async function overview() {
 
 async function workstationsPage() {
   const v = $('#view'), canEdit = TECH.includes(me.role);
-  v.innerHTML = `<div><div class="section-head"><h3>Laboratory layout</h3>
-      ${canEdit ? '<span><button class="btn" id="editMap">Arrange layout</button> <button class="btn primary" id="saveMap" hidden>Save layout</button></span>' : ''}</div>
-      <p class="muted no-print" id="mapHint" hidden>Drag each PC to where it is in the room, then press Save layout. The tablet shows the same map.</p>
-      <div id="mapBox"></div></div>
-    <div><div class="section-head"><h3>Workstations</h3><button class="btn" id="addWs" ${canEdit ? '' : 'hidden'}>+ Add workstation</button></div><div class="table-wrap" id="wsTable"></div></div>`;
+  v.innerHTML = `<div class="panel"><div class="panel-head"><h3>${icon('map')} Laboratory layout</h3>
+      ${canEdit ? `<span><button class="btn" id="editMap">${icon('move')} Arrange layout</button> <button class="btn primary" id="saveMap" hidden>${icon('check')} Save layout</button></span>` : ''}</div>
+      <div class="panel-body"><p class="muted no-print" id="mapHint" hidden>Drag each PC to where it sits in the room, then press Save layout. The tablet shows the same map.</p>
+      <div id="mapBox"></div></div></div>
+    <div class="panel"><div class="panel-head"><h3>${icon('monitor')} Workstations & network status</h3><button class="btn primary" id="addWs" ${canEdit ? '' : 'hidden'}>${icon('plus')} Add workstation</button></div><div class="table-wrap" id="wsTable"></div></div>`;
   let pcs = [], editing = false;
   const draw = () => {
     $('#mapBox').innerHTML = mapHtml(pcs, { editing });
     $('#wsTable').innerHTML = pcs.length ? `<table><tr><th>PC</th><th>Name</th><th>Node</th><th>Status</th><th>Power</th><th>Network</th><th>Last heartbeat</th><th class="actions"></th></tr>
       ${pcs.map(p => `<tr><td>${esc(p.id)}</td><td>${esc(p.label)}</td><td>${esc(p.nodeId ?? '—')}</td><td>${badge(p.status)}</td><td>${esc(p.power)}</td>
-        <td>${p.online ? `Connected · ${esc(p.rssi ?? '?')} dBm` : '<span class="badge s-OFFLINE">Disconnected</span>'}</td><td>${p.lastSeen ? fmt(p.lastSeen) : 'never'}</td>
+        <td>${p.online ? badge('active', `Connected · ${p.rssi ?? '?'} dBm`) : badge('OFFLINE', 'Disconnected')}</td><td>${p.lastSeen ? fmt(p.lastSeen) : 'never'}</td>
         <td class="actions">${canEdit ? `<button class="btn small" data-edit="${esc(p.id)}">Edit</button> <button class="btn small danger" data-del="${esc(p.id)}">Delete</button>` : ''}</td></tr>`).join('')}</table>`
-      : '<p class="empty">No workstations yet.</p>';
+      : emptyState('No workstations yet. Add PC-01, PC-02 … to get started.', 'monitor');
   };
   const load = run(async () => { if (editing) return; pcs = (await api('/workstations/live')).workstations; draw(); });
   await load();
@@ -427,10 +494,10 @@ async function workstationsPage() {
 function reportTable(r) {
   return `<h3 class="print-title">ComLab — ${esc(r.title)} (${new Date().toLocaleDateString('en-PH')})</h3>
     <div class="table-wrap"><table><thead><tr>${r.columns.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>
-    ${r.rows.length ? r.rows.map(row => `<tr>${r.columns.map(([k]) => `<td>${k === 'status' || k === 'condition' ? badge(row[k]) : esc(row[k])}</td>`).join('')}</tr>`).join('') : `<tr><td class="empty" colspan="${r.columns.length}">No records for this filter.</td></tr>`}
+    ${r.rows.length ? r.rows.map(row => `<tr>${r.columns.map(([k]) => `<td>${k === 'status' || k === 'condition' ? badge(row[k]) : esc(row[k])}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${r.columns.length}">${emptyState('No records for this filter.', 'calendar')}</td></tr>`}
     </tbody></table></div>`;
 }
-const exportButtons = `<span class="no-print"><button class="btn" data-x="xlsx">⬇ Excel</button> <button class="btn" data-x="csv">⬇ CSV</button> <button class="btn" data-x="pdf">🖨 Print / PDF</button></span>`;
+const exportButtons = `<span class="spacer"></span><span class="no-print" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-x="xlsx">${icon('download')} Excel</button><button class="btn" data-x="csv">${icon('download')} CSV</button><button class="btn" data-x="pdf">${icon('printer')} Print / PDF</button></span>`;
 
 async function attendancePage() {
   const [sections, subjects] = await Promise.all([lookup('sections').catch(() => []), lookup('subjects').catch(() => [])]);
@@ -444,7 +511,8 @@ async function attendancePage() {
   const qs = () => new URLSearchParams([...new FormData($('#flt'))].filter(([, val]) => val)).toString();
   const load = run(async () => {
     const r = await api(`/api/reports/attendance?${qs()}`);
-    $('#out').innerHTML = `<p class="muted">${r.rows.length} record(s) · ${new Set(r.rows.map(x => x.studentId)).size} student(s)</p>${reportTable(r)}`;
+    $('#out').innerHTML = `<div class="stats">${stat(r.rows.length, 'Sessions', 'calendar', 't-blue')}${stat(new Set(r.rows.map(x => x.studentId)).size, 'Students', 'users', 't-violet')}
+      ${stat(r.rows.filter(x => x.timeOutLocal === 'Active').length, 'Still in the lab', 'monitor', 't-green')}${stat(r.rows.filter(x => x.assignment === 'auto').length, 'Auto-assigned PCs', 'grid', 't-amber')}</div>${reportTable(r)}`;
   });
   $('#flt').onsubmit = e => { e.preventDefault(); load(); };
   $('#flt').onclick = e => { const x = e.target.dataset.x; if (!x) return; e.preventDefault(); x === 'pdf' ? print() : download(`/api/reports/attendance.${x}?${qs()}`); };
@@ -467,11 +535,12 @@ async function reportsPage() {
       maintenance: [[r.rows.length, 'Reports'], [r.rows.filter(x => x.status === 'resolved').length, 'Resolved'], [r.rows.filter(x => x.status !== 'resolved').length, 'Pending']],
       inventory: [[r.rows.length, 'Items'], [r.rows.filter(x => x.condition === 'working').length, 'Working'], [r.rows.filter(x => x.condition !== 'working').length, 'Need attention']],
       attendance: [[r.rows.length, 'Sessions'], [new Set(r.rows.map(x => x.studentId)).size, 'Students'], [r.rows.filter(x => x.assignment === 'auto').length, 'Auto-assigned']] }[rep];
-    $('#kpi').innerHTML = kpi.map(([n, l]) => `<div class="stat"><b>${esc(n)}</b><span>${l}</span></div>`).join('');
+    const tones = ['t-blue', 't-green', 't-amber', 't-violet'], ics = ['chart', 'clock', 'alert', 'monitor'];
+    $('#kpi').innerHTML = kpi.map(([n, l], i) => stat(n, l, ics[i], tones[i])).join('');
     if (rep === 'usage') {
       const max = Math.max(1, ...r.rows.map(x => x.hours));
-      $('#out').innerHTML = `<div class="card"><h3 style="margin-bottom:12px">Hours used per PC</h3>${r.rows.map(x => `<div style="display:grid;grid-template-columns:90px 1fr 60px;gap:10px;align-items:center;margin:6px 0">
-        <span>${esc(x.label)}</span><span style="height:14px;border-radius:7px;background:var(--teal);width:${(x.hours / max) * 100}%;min-width:2px"></span><span class="muted">${x.hours} h</span></div>`).join('')}</div>${reportTable(r)}`;
+      $('#out').innerHTML = `<div class="panel"><div class="panel-head"><h3>${icon('chart')} Hours used per PC</h3></div><div class="panel-body">${r.rows.map(x => `<div class="bar-row">
+        <span>${esc(x.label)}</span><span class="bar"><span style="width:${Math.max(1, (x.hours / max) * 100)}%"></span></span><span class="muted">${x.hours} h</span></div>`).join('') || emptyState('No workstations yet.', 'monitor')}</div></div>${reportTable(r)}`;
     } else $('#out').innerHTML = reportTable(r);
   });
   $('#flt').onsubmit = e => { e.preventDefault(); load(); };
@@ -484,15 +553,16 @@ async function fingerprintsPage() {
   const v = $('#view');
   const draw = run(async () => {
     const st = await api('/fingerprint/status');
-    if (!st.ready) { v.innerHTML = `<div class="card"><h3>⚠️ Sensor not ready</h3><p>${esc(st.error ?? 'Check the AS608 wiring and power.')}</p><button class="btn" id="retry">Retry</button></div>`; $('#retry').onclick = draw; return; }
+    if (!st.ready) { v.innerHTML = `<div class="notice">${icon('alert')}<div><b>Sensor not ready</b><p style="margin:4px 0 10px">${esc(st.error ?? 'Check the AS608 wiring and power.')}</p><button class="btn" id="retry">Retry</button></div></div>`; $('#retry').onclick = draw; return; }
     const s = await api('/api/fingerprint/slots');
-    v.innerHTML = `<div class="stats"><div class="stat"><b>${s.slots.length}</b><span>Stored fingerprints</span></div><div class="stat"><b>${s.capacity}</b><span>Sensor capacity</span></div>
-      <div class="stat"><b>${s.slots.filter(x => !x.owner).length}</b><span>Unlinked (orphan) slots</span></div></div>
-      ${s.missingOnSensor.length ? `<div class="card"><b>⚠️ Missing on sensor:</b> ${s.missingOnSensor.map(m => esc(m.name)).join(', ')} — re-enroll them.</div>` : ''}
-      <p class="muted">To enroll, open <a href="#/students">Students</a> or <a href="#/users">Staff accounts</a> and press “Enroll finger”.</p>
-      <div class="table-wrap"><table><tr><th>Slot</th><th>Linked to</th><th class="actions"></th></tr>${s.slots.map(x => `<tr><td>${x.slot}</td>
-        <td>${x.owner ? `${esc(x.owner.name)} <span class="muted">(${x.owner.type} ${esc(x.owner.id)})</span>` : '<span class="badge s-open">Not linked</span>'}</td>
-        <td class="actions"><button class="btn small danger" data-slot="${x.slot}">Delete</button></td></tr>`).join('') || '<tr><td colspan="3" class="empty">Sensor is empty.</td></tr>'}</table></div>`;
+    const orphans = s.slots.filter(x => !x.owner).length;
+    v.innerHTML = `<div class="stats">${stat(s.slots.length, 'Stored fingerprints', 'fingerprint', 't-blue')}${stat(s.capacity - s.slots.length, 'Free slots', 'box', 't-green')}
+      ${stat(orphans, 'Unlinked slots', 'alert', orphans ? 't-amber' : 't-grey')}</div>
+      ${s.missingOnSensor.length ? `<div class="notice">${icon('alert')}<div><b>Missing on sensor:</b> ${s.missingOnSensor.map(m => esc(m.name)).join(', ')} — re-enroll them.</div></div>` : ''}
+      <div class="panel"><div class="panel-head"><h3>${icon('fingerprint')} Sensor slots</h3><span class="muted">Enroll from <a href="#/students">Students</a> or <a href="#/users">Staff accounts</a></span></div>
+      <div class="table-wrap"><table><tr><th>Slot</th><th>Linked to</th><th class="actions"></th></tr>${s.slots.map(x => `<tr><td>#${x.slot}</td>
+        <td>${x.owner ? person(x.owner.name, `${x.owner.type} · ${x.owner.id}`) : badge('open', 'Not linked')}</td>
+        <td class="actions"><button class="btn small danger" data-slot="${x.slot}">Delete</button></td></tr>`).join('') || `<tr><td colspan="3">${emptyState('The sensor is empty.', 'fingerprint')}</td></tr>`}</table></div></div>`;
   });
   v.onclick = run(async e => {
     const slot = e.target.dataset.slot;
@@ -504,7 +574,7 @@ async function fingerprintsPage() {
 async function settingsPage() {
   const s = await api('/settings/kiosk');
   const v = $('#view');
-  v.innerHTML = `<form class="card" id="set" style="max-width:520px;display:grid;gap:14px"><h3>Kiosk tablet</h3>
+  v.innerHTML = `<form class="card" id="set" style="max-width:560px;display:grid;gap:16px"><h3 style="display:flex;gap:10px;align-items:center">${icon('monitor')} Kiosk tablet</h3>
     <label>Auto-assign a PC after (seconds)<input type="number" name="autoAssignAfterSeconds" min="10" max="300" value="${s.autoAssignAfterSeconds}"></label>
     <label>Welcome screen timeout (seconds)<input type="number" name="welcomeTimeoutSeconds" min="10" max="120" value="${s.welcomeTimeoutSeconds}"></label>
     <button class="btn primary">Save</button></form>`;
@@ -517,8 +587,10 @@ async function settingsPage() {
 
 async function auditPage() {
   const r = await api('/api/audit');
-  $('#view').innerHTML = `<div class="table-wrap"><table><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr>
-    ${r.rows.map(a => `<tr><td>${fmt(a.at)}</td><td>${esc(a.actor)}</td><td>${esc(a.action)}</td><td>${esc(a.target ?? '')}</td><td class="muted">${esc(a.detail ?? '')}</td></tr>`).join('')}</table></div>`;
+  const tone = { admin: 'in_progress', technician: 'open', instructor: 'active', kiosk: 'IDLE' };
+  $('#view').innerHTML = `<div class="panel"><div class="panel-head"><h3>${icon('activity')} Recent activity</h3><span class="muted">Last 500 events</span></div><div class="table-wrap"><table><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr>
+    ${r.rows.map(a => { const who = String(a.actor).split(':')[0]; return `<tr><td>${fmt(a.at)}</td><td>${badge(tone[who] ?? 'inactive', who)}</td>
+      <td><b>${esc(a.action)}</b></td><td class="muted">${esc(String(a.target ?? '').slice(0, 13))}</td><td class="muted">${esc(a.detail ?? '')}</td></tr>`; }).join('')}</table></div></div>`;
 }
 
 // ------------------------------------------------------------------ BOOT

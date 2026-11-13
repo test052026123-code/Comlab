@@ -4,32 +4,45 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ComLab Dashboard</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='4' width='20' height='13' rx='2' fill='%23075563'/%3E%3Crect x='8' y='18' width='8' height='2' fill='%23075563'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230d7a8a'/%3E%3Crect x='5' y='6' width='14' height='9' rx='1.5' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M9 19h6' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <div id="login" class="login" hidden>
-    <form id="loginForm" class="card login-card">
-      <h1>ComLab</h1>
-      <p class="muted">Computer Laboratory Management</p>
-      <label>Username<input name="username" autocomplete="username" required></label>
-      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="btn primary" type="submit">Sign in</button>
-      <p id="loginError" class="error" role="alert"></p>
-    </form>
+    <section class="login-art">
+      <div class="logo"><span class="logo-mark" data-icon="monitor"></span> ComLab</div>
+      <div>
+        <h1>Computer laboratory, at a glance.</h1>
+        <p>Fingerprint attendance, live workstation monitoring, error reports, maintenance and inventory — running locally on the lab server.</p>
+      </div>
+      <div class="chips"><span>Biometric attendance</span><span>Live lab map</span><span>Hybrid PC assignment</span><span>Works offline</span></div>
+    </section>
+    <section class="login-pane">
+      <form id="loginForm" class="login-card">
+        <div><h2>Welcome back</h2><p class="muted">Sign in with your staff account.</p></div>
+        <label>Username<input name="username" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary" type="submit">Sign in</button>
+        <p id="loginError" class="error" role="alert"></p>
+      </form>
+    </section>
   </div>
 
   <div id="shell" class="shell" hidden>
     <aside class="side">
-      <div class="brand">ComLab<small id="who"></small></div>
+      <div class="brand"><span class="logo-mark" data-icon="monitor"></span><div><b>ComLab</b><small>Lab Management</small></div></div>
       <nav id="nav"></nav>
-      <button id="logout" class="btn ghost">Sign out</button>
+      <div class="side-foot">
+        <button id="theme" class="btn" type="button"></button>
+        <button id="logout" class="btn" type="button"></button>
+      </div>
     </aside>
     <main>
       <header class="top">
-        <button id="menu" class="btn ghost menu" aria-label="Menu">☰</button>
-        <h2 id="title"></h2>
-        <span id="clock" class="muted"></span>
+        <button id="menu" class="btn ghost menu" aria-label="Menu" data-icon="menu"></button>
+        <div class="titles"><div class="crumb" id="crumb"></div><h2 id="title"></h2></div>
+        <span class="live" id="clock"></span>
+        <span class="avatar" id="avatar" title=""></span>
       </header>
       <section id="view"></section>
     </main>
