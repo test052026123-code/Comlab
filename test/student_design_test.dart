@@ -28,6 +28,85 @@ LabState designState() => LabState(store: MemoryStore())
   ];
 
 void main() {
+  testWidgets(
+    'single-PC tablet card fits with the busy bar and all reservation states',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.5;
+      tester.view.padding = const FakeViewPadding(top: 36, bottom: 72);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+      for (final busy in [false, true]) {
+        for (final status in ['available', 'reserved', 'offline']) {
+          final state = designState()
+            ..screen = 'map'
+            ..busy = busy;
+          state.pcs = [
+            {
+              'id': 'PC-01', 'nodeId': 'NODE-01', 'enabled': true,
+              'eligible': status == 'available', 'assignment': status,
+              // Legacy responses may omit sessionId; reserved still means occupied.
+              'node': {
+                'power': status == 'offline' ? 'unknown' : 'off',
+                'connectivity': status == 'offline'
+                    ? 'disconnected'
+                    : 'connected',
+              },
+            },
+          ];
+          await tester.pumpWidget(ComLabApp(state: state));
+          await tester.pump(const Duration(milliseconds: 200));
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '$status / busy=$busy',
+          );
+          expect(find.text('PC-01').hitTestable(), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('pc-confirmation-bar')).hitTestable(),
+            findsOneWidget,
+          );
+          if (status == 'reserved') expect(find.text('In use'), findsWidgets);
+          expect(find.text('Power: unknown'), findsNothing);
+          await tester.pumpWidget(const SizedBox.shrink());
+          state.dispose();
+        }
+      }
+    },
+  );
+
+  testWidgets('short PC card accommodates enlarged text without overflow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.5)),
+            child: SizedBox(
+              width: 150,
+              height: 130,
+              child: PcCard(
+                fitHeight: true,
+                pc: {
+                  'id': 'PC-01',
+                  'eligible': false,
+                  'assignment': 'reserved',
+                  'node': {'power': 'unknown'},
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('PC-01').hitTestable(), findsOneWidget);
+    expect(find.text('In use'), findsWidgets);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student request errors preserve scan and PC card space', (
     tester,
   ) async {

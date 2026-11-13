@@ -107,7 +107,8 @@ class _FingerprintEnrollDialogState extends State<FingerprintEnrollDialog> {
       result?['duplicateStudentId'] != null
           ? 'This finger is already enrolled for student ${result?['duplicateStudentId']}.'
           : 'This finger is already stored on the sensor but not linked to a student.',
-    'mismatch' => 'The two presses did not match. Try again with the same finger.',
+    'mismatch' =>
+      'The two presses did not match. Try again with the same finger.',
     'conflict' =>
       'The slot was linked to another student meanwhile. Try again.',
     'canceled' => 'Enrollment canceled.',

@@ -15,12 +15,16 @@ struct NodeObservation {
   uint32_t sequence = 0, receivedMs = 0;
   int64_t sampledAtMs = 0;
   bool benchReady = false;
+  bool powerReady = false;
   String power = "unknown";
 };
 static NodeObservation nodeObservations[5];
 static WiFiUDP controllerNodeUdp;
 static bool nodeBridgeStarted = false;
 static JsonDocument controllerBenchCommand, controllerBenchResult;
+static void printControllerPowerStatus();
+static void printFingerprintStatus();
+static void printNetworkStatus();
 
 static void pollBenchDiagnostics() {
   static String line;
@@ -31,6 +35,9 @@ static void pollBenchDiagnostics() {
       if (line == "BENCHSTATUS") {
         Serial.printf("[Bench] Pending cloud test: %s; node result: %s.\n", (controllerBenchCommand["commandId"] | "none"), (controllerBenchResult["state"] | "none"));
       }
+      if (line == "POWERSTATUS") printControllerPowerStatus();
+      if (line == "FINGERSTATUS") printFingerprintStatus();
+      if (line == "NETSTATUS") printNetworkStatus();
       line.clear();
     } else if (line.length() < 32) line += c;
     else line = "INVALID";
@@ -41,6 +48,8 @@ static bool nodeRecent(const NodeObservation& observation) {
   const int64_t age = static_cast<int64_t>(time(nullptr)) * 1000 - observation.sampledAtMs;
   return observation.seen && millis() - observation.receivedMs < NODE_FRESH_MS && age >= -2000 && age < NODE_FRESH_MS;
 }
+
+#include "ControllerPower.h"
 
 static void addControllerBench(JsonDocument& body) {
   body["benchSupported"] = true;
@@ -66,6 +75,7 @@ static void handleControllerBench(JsonDocument& body) {
     if (command["nodeId"].as<String>() == NODE_CREDENTIALS[i].nodeId && command["workstationId"].as<String>() == NODE_CREDENTIALS[i].workstationId) {
       const String previous = controllerBenchCommand["commandId"] | "";
       controllerBenchCommand.set(command);
+      if (controllerPower.slots[i].state != PowerBridge::Empty) stopBenchForPower(i);
       if (previous != command["commandId"].as<String>()) Serial.printf("[Bench] Cloud test received for %s; forwarding in signed node acknowledgement.\n", NODE_CREDENTIALS[i].nodeId);
       return;
     }
@@ -77,7 +87,8 @@ static void acknowledgeNode(size_t index, const IPAddress& address, uint16_t por
   JsonDocument body;
   body["protocolVersion"] = 1; body["nodeId"] = NODE_CREDENTIALS[index].nodeId;
   body["bootId"] = observation.bootId; body["ackSequence"] = observation.sequence;
-  if (!controllerBenchCommand.isNull() && controllerBenchResult.isNull() && nodeRecent(observation) && observation.benchReady &&
+  addPowerAcknowledgement(index, body);
+  if (!powerBusy(index) && !controllerBenchCommand.isNull() && controllerBenchResult.isNull() && nodeRecent(observation) && observation.benchReady &&
       controllerBenchCommand["nodeId"].as<String>() == NODE_CREDENTIALS[index].nodeId &&
       controllerBenchCommand["expiresAtMs"].as<int64_t>() > static_cast<int64_t>(time(nullptr)) * 1000) {
     body["benchCommand"].set(controllerBenchCommand.as<JsonObjectConst>());
@@ -103,7 +114,7 @@ static void pollNodeHeartbeats() {
     if (!MDNS.begin("comlab-controller") || !controllerNodeUdp.begin(NODE_CONTROLLER_PORT)) { MDNS.end(); return; }
     MDNS.addService("comlab-node", "udp", NODE_CONTROLLER_PORT);
     nodeBridgeStarted = true;
-    Serial.printf("[Nodes] Authenticated heartbeat receiver ready at %s:%u. Remote relay bench tests supported; PC power control disabled.\n", WiFi.localIP().toString().c_str(), NODE_CONTROLLER_PORT);
+    Serial.printf("[Nodes] Authenticated heartbeat receiver ready at %s:%u. Guarded power-on bridge v1.\n", WiFi.localIP().toString().c_str(), NODE_CONTROLLER_PORT);
   }
   for (int count = 0; count < 8; ++count) {
     const int length = controllerNodeUdp.parsePacket();
@@ -122,7 +133,13 @@ static void pollNodeHeartbeats() {
     if (deserializeJson(envelope, packet) || !envelope.is<JsonObject>() || envelope.size() != 2) continue;
     const String raw = envelope["body"] | "";
     if (deserializeJson(body, raw) || !body.is<JsonObject>()) continue;
-    if (body.size() != 10 && !(body["benchReady"].is<bool>() && (body.size() == 11 || (body.size() == 12 && body["benchResult"].is<JsonObject>())))) continue;
+    size_t expectedFields = 10;
+    bool extensionsValid = true;
+    if (body.containsKey("benchReady")) { ++expectedFields; extensionsValid &= body["benchReady"].is<bool>(); }
+    if (body.containsKey("benchResult")) { ++expectedFields; extensionsValid &= body["benchReady"].is<bool>() && body["benchResult"].is<JsonObject>(); }
+    if (body.containsKey("powerReady")) { ++expectedFields; extensionsValid &= body["powerReady"].is<bool>(); }
+    if (body.containsKey("powerResult")) { ++expectedFields; extensionsValid &= body["powerReady"].is<bool>() && body["powerResult"].is<JsonObject>(); }
+    if (!extensionsValid || body.size() != expectedFields) continue;
     int index = -1;
     for (int i = 0; i < 5; ++i) {
       if (body["nodeId"].as<String>() == NODE_CREDENTIALS[i].nodeId && body["workstationId"].as<String>() == NODE_CREDENTIALS[i].workstationId) { index = i; break; }
@@ -152,8 +169,11 @@ static void pollNodeHeartbeats() {
     observation.seen = true; observation.bootId = boot; observation.raw = raw;
     observation.sequence = sequence; observation.receivedMs = millis(); observation.sampledAtMs = sampledAtMs;
     observation.benchReady = body["benchReady"] | false;
+    observation.powerReady = body["powerReady"] | false;
     const String previousPower = observation.power;
     observation.power = body["power"].as<String>();
+    controllerPower.tick(index, controllerNowMs(), observation.bootId.c_str());
+    handlePowerNodeResult(index, body["powerResult"].as<JsonObjectConst>());
     if (wasRecent && previousPower != observation.power) Serial.printf("[Nodes] %s power: %s.\n", NODE_CREDENTIALS[index].nodeId, observation.power.c_str());
     JsonObjectConst bench = body["benchResult"].as<JsonObjectConst>();
     const String state = bench["state"] | "";

@@ -16,18 +16,25 @@ static volatile bool active = false, ended = false, armed = false, expired = fal
 static bool pending = false, ready = false, tested = false, inputOverflow = false;
 static int64_t pulseDeadlineUs = 0, armDeadlineUs = 0;
 static uint32_t lastTestAt = 0;
-static char input[32];
+static char input[96];
 static size_t inputLength = 0;
 static volatile int remoteProgress = 0; // 1 queued, 2 started, 3 timed release, 4 canceled.
 static void (*statusHook)() = nullptr;
+static bool (*commandHook)(const char*) = nullptr;
+// A production power command rechecks sensor/expiry immediately before HIGH.
+static bool (*pulseGuard)() = nullptr;
+static bool (*benchAllowed)() = nullptr;
+static bool guardedPulse = false;
 
-static bool remotePulse() {
+static bool remotePulse(bool guarded = false) {
+  if (!guarded && benchAllowed && !benchAllowed()) return false;
   const uint32_t now = millis();
   bool accepted = false;
   portENTER_CRITICAL(&mux);
   if (ready && !active && !pending && (!tested || now - lastTestAt >= COOLDOWN_MS)) {
     armed = true; expired = false;
     armDeadlineUs = esp_timer_get_time() + 1000000;
+    guardedPulse = guarded;
     remoteProgress = 1; pending = true; tested = true; lastTestAt = now; accepted = true;
   }
   portEXIT_CRITICAL(&mux);
@@ -57,6 +64,11 @@ static void timerTick(void*) {
     }
     pending = false;
   } else if (pending && !active) {
+    if (guardedPulse && (!pulseGuard || !pulseGuard())) {
+      pending = false; armed = false; remoteProgress = 5; // Rejected before HIGH.
+      portEXIT_CRITICAL(&mux);
+      return;
+    }
     pending = false; active = true;
     if (remoteProgress == 1) remoteProgress = 2;
     pulseDeadlineUs = now + static_cast<int64_t>(PULSE_MS) * 1000;
@@ -91,7 +103,13 @@ static void begin() {
 }
 
 static void command(String value) {
-  value.trim(); value.toUpperCase();
+  value.trim();
+  if (commandHook && commandHook(value.c_str())) return;
+  value.toUpperCase();
+  if ((value == "ARM" || value == "TEST") && benchAllowed && !benchAllowed()) {
+    Serial.println("[Relay] Power command pending/unknown; bench pulse blocked. OFF remains available.");
+    return;
+  }
   const uint32_t now = millis();
   if (value == "HELP") { help(); return; }
   if (value == "OFF") { off(); Serial.println("[Relay] OFF and disarmed."); return; }
@@ -115,6 +133,7 @@ static void command(String value) {
     portENTER_CRITICAL(&mux);
     if (ready && armed && esp_timer_get_time() < armDeadlineUs && !active && !pending &&
         (!tested || now - lastTestAt >= COOLDOWN_MS)) {
+      guardedPulse = false;
       pending = true; tested = true; lastTestAt = now; accepted = true;
     }
     portEXIT_CRITICAL(&mux);

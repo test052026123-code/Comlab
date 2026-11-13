@@ -180,9 +180,12 @@ class WelcomeScreen extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Check in or find your active session.',
+          'Scan to check in. Scan again to end your session or report a problem.',
           style: TextStyle(color: Color(0xFF72768C)),
         ),
+        if (s.reportConfirmation != null) Notice(s.reportConfirmation!),
+        if (s.sessionEndConfirmation != null) Notice(s.sessionEndConfirmation!),
+        if (s.selectionConfirmation != null) Notice(s.selectionConfirmation!),
         Expanded(
           child: Center(
             child: FittedBox(
@@ -219,14 +222,28 @@ class WelcomeScreen extends StatelessWidget {
           ),
         ),
         if (s.pending != null) ...[
-          const Notice(
-            'A previous operation needs reconciliation before another check-in.',
+          Notice(
+            s.hasSavedReservation
+                ? '${s.pending?['workstationId']} is reserved. Resume your session to view its startup status.'
+                : 'Your check-in request is saved. Check its status before starting another.',
           ),
           const SizedBox(height: 8),
           FilledButton.icon(
             onPressed: s.busy ? null : () => s.run(s.recover),
             icon: const Icon(Icons.sync),
-            label: const Text('Recover pending operation'),
+            label: Text(
+              s.hasSavedReservation ? 'Resume session' : 'Check saved check-in',
+            ),
+          ),
+          OutlinedButton.icon(
+            onPressed: s.busy ? null : () => s.navigate('issue'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 40),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            icon: const Icon(Icons.report_problem_outlined),
+            label: const Text('Report a problem'),
           ),
         ] else ...[
           SizedBox(
@@ -289,6 +306,121 @@ class WelcomeScreen extends StatelessWidget {
       );
 }
 
+/// Asks a returning student whether to end their session, and ends it on Yes.
+/// Failures stay inside the dialog so the student sees why it did not end.
+Future<void> askEndSession(BuildContext context, LabState s) async {
+  final pc = s.session?['workstationId'] ?? 'your computer';
+  var ending = false;
+  String? failure;
+  BuildContext? open;
+  // The idle timer can return the kiosk home; never leave this question
+  // floating over the welcome screen for the next student.
+  void closeWhenGone() {
+    final dialog = open;
+    if (s.screen != 'session' &&
+        !ending &&
+        dialog != null &&
+        dialog.mounted &&
+        ModalRoute.of(dialog)?.isCurrent == true) {
+      open = null;
+      Navigator.of(dialog).pop();
+    }
+  }
+
+  s.addListener(closeWhenGone);
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, update) {
+        open = dialogContext;
+        return PopScope(
+          canPop: !ending,
+          child: AlertDialog(
+            key: const ValueKey('end-session-question'),
+            title: Text(
+              failure == null ? 'End your session?' : 'Session not ended',
+            ),
+            content: Text(
+              ending
+                  ? 'Ending your session…'
+                  : failure ??
+                        'You are using $pc. Do you want to end your session now? Your time-out will be recorded and the computer will be released.',
+            ),
+            actions: ending
+                ? const []
+                : [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                        s.navigate('issue');
+                      },
+                      child: const Text('Report a problem'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: Text(failure == null ? 'No' : 'Close'),
+                    ),
+                    if (failure == null)
+                      FilledButton(
+                        onPressed: () async {
+                          update(() => ending = true);
+                          await s.run(s.checkout);
+                          if (!dialogContext.mounted) return;
+                          if (s.error == null) {
+                            Navigator.of(dialogContext).pop();
+                          } else {
+                            final message = s.error;
+                            s.dismissError();
+                            update(() {
+                              failure = message;
+                              ending = false;
+                            });
+                          }
+                        },
+                        child: const Text('Yes, end session'),
+                      ),
+                  ],
+          ),
+        );
+      },
+    ),
+  );
+  open = null;
+  s.removeListener(closeWhenGone);
+}
+
+/// The student's session page; a fresh scan opens the end-session question.
+class StudentSessionPrompt extends StatefulWidget {
+  const StudentSessionPrompt({
+    super.key,
+    required this.state,
+    required this.child,
+  });
+  final LabState state;
+  final Widget child;
+  @override
+  State<StudentSessionPrompt> createState() => _StudentSessionPromptState();
+}
+
+class _StudentSessionPromptState extends State<StudentSessionPrompt> {
+  @override
+  void initState() {
+    super.initState();
+    // Only a fresh fingerprint scan can end the session (not Resume session).
+    if (widget.state.scanRequestId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.state.screen == 'session') {
+          askEndSession(context, widget.state);
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 class PcSelection extends StatefulWidget {
   const PcSelection({super.key, required this.state});
   final LabState state;
@@ -298,6 +430,70 @@ class PcSelection extends StatefulWidget {
 
 class _PcSelectionState extends State<PcSelection> {
   String? selected;
+  Future<void> _confirmStart(String id) async {
+    final s = widget.state;
+    final name = s.student?['name'] ?? 'you';
+    var submitting = false;
+    String? failure;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => PopScope(
+          canPop: !submitting,
+          child: AlertDialog(
+            title: Text(
+              failure == null ? 'Start $id?' : 'Selection not confirmed',
+            ),
+            content: Text(
+              submitting
+                  ? 'Confirming your selection…'
+                  : failure ??
+                        'Select $id for $name and start the computer? When you are done, scan again to end your session.',
+            ),
+            actions: [
+              if (!submitting)
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(failure == null ? 'Cancel' : 'Close'),
+                ),
+              if (!submitting && failure == null)
+                FilledButton(
+                  onPressed: () async {
+                    if (submitting) return;
+                    update(() => submitting = true);
+                    await s.run(() => s.confirmPcSelection(id));
+                    if (!dialogContext.mounted) return;
+                    if (s.error == null) {
+                      Navigator.of(dialogContext).pop();
+                    } else {
+                      update(() {
+                        failure = s.error;
+                        submitting = false;
+                      });
+                    }
+                  },
+                  child: const Text('Confirm'),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.startPcStatusPolling();
+  }
+
+  @override
+  void dispose() {
+    widget.state.stopPcStatusPolling();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = widget.state;
@@ -494,17 +690,7 @@ class _PcSelectionState extends State<PcSelection> {
                     ),
                     onPressed: !canConfirm
                         ? null
-                        : () async {
-                            final id = selected!;
-                            if (await confirm(
-                              context,
-                              'Reserve $id?',
-                              'Assign this PC to ${s.student?['name']} and start your session?',
-                            )) {
-                              if (!mounted) return;
-                              await s.run(() => s.reserve(id));
-                            }
-                          },
+                        : () => _confirmStart(selected!),
                     icon: const Icon(Icons.arrow_forward, size: 18),
                     label: Text(
                       'Confirm ${canConfirm ? selected : 'selection'}',

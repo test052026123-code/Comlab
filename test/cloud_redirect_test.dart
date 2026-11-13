@@ -5,6 +5,58 @@ import 'package:http/testing.dart';
 import 'package:kiosk/data/services.dart';
 
 void main() {
+  testWidgets(
+    'fingerprint polling times out early enough to retry the same scan',
+    (tester) async {
+      final response = Completer<http.Response>();
+      final client = MockClient((_) => response.future);
+      final repository = CloudRepository(
+        'https://api.example',
+        () async => 'unit-token',
+        client: client,
+      );
+      final result = expectLater(
+        repository.get('/fingerprint/requests/scan-id'),
+        throwsA(
+          isA<ApiFailure>().having((e) => e.retryable, 'retryable', isTrue),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 11));
+      await result;
+      response.complete(http.Response('{}', 200));
+      await tester.pump();
+      client.close();
+    },
+  );
+
+  for (final status in [401, 403, 404, 408, 409, 429, 503]) {
+    test(
+      'cloud HTTP $status retry classification preserves authorization failures',
+      () async {
+        final client = MockClient(
+          (_) async => http.Response('{"error":"request failed"}', status),
+        );
+        final repository = CloudRepository(
+          'https://api.example',
+          () async => 'unit-token',
+          client: client,
+        );
+        await expectLater(
+          repository.get('/fingerprint/requests/scan-id'),
+          throwsA(
+            isA<ApiFailure>().having(
+              (e) => e.retryable,
+              'retryable',
+              [408, 429, 503].contains(status),
+            ),
+          ),
+        );
+        client.close();
+      },
+    );
+  }
+
   testWidgets('cloud read can finish after the former 20-second deadline', (
     tester,
   ) async {

@@ -113,17 +113,24 @@ export class LabService {
       const command = c?.data();
       const unconfirmedPower = !!command && !['confirmed_on', 'rejected', 'failed'].includes(command.state);
       const repairedMissingStudentAssignment = actor.role === 'admin' && !a.exists && p.data()?.sessionId === id;
-      requireThat((a.data()?.sessionId === id && p.data()?.sessionId === id) || repairedMissingStudentAssignment,
+      // Staff may already have released the PC and student marker by hand. A
+      // verified student may still close their own record, provided neither
+      // marker now belongs to another session.
+      const ownsMarker = a.data()?.sessionId === id, ownsPc = p.data()?.sessionId === id;
+      const repairedReleasedAssignment = studentVerified && !(ownsMarker && ownsPc) &&
+        (ownsMarker || !a.exists) && (ownsPc || !p.data()?.sessionId);
+      requireThat((ownsMarker && ownsPc) || repairedMissingStudentAssignment || repairedReleasedAssignment,
         'Assignment integrity error. Contact administrator.');
       tx.update(sr, { status: 'closed', timeOut: stamp(), closeReason: reason, closedBy: actor.uid });
-      tx.delete(refs[0]);
-      tx.update(refs[1], { sessionId: null, assignment: p.data().maintenance ? 'maintenance' : 'available' });
+      if (ownsMarker) tx.delete(refs[0]);
+      if (ownsPc) tx.update(refs[1], { sessionId: null, assignment: p.data().maintenance ? 'maintenance' : 'available' });
       // Never let an undelivered power pulse reach a PC that has been released.
       if (unconfirmedPower && command.delivery === 'cloud' && command.controllerId) {
         tx.delete(this.db.doc(`controllerQueue/${command.controllerId}/commands/${data.commandId}`));
       }
       this.audit(tx, actor, 'close_session', { id, reason,
         ...(repairedMissingStudentAssignment ? { repairedMissingStudentAssignment: true } : {}),
+        ...(repairedReleasedAssignment ? { repairedReleasedAssignment: true } : {}),
         ...(unconfirmedPower ? { studentEndedUnconfirmedPower: true, commandState: command.state } : {}) });
     });
     return { closed: true };

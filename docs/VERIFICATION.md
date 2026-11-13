@@ -1,5 +1,137 @@
 # Local verification record
 
+## Connected tablet inspection — 2026-11-10
+
+ADB detected the U24 Pro, serial `0123456789ABCDEF`, running ComLab build 16,
+version 1.0.0. The app was foregrounded on Admin Login with a native Firebase
+channel name displayed as the error. Android logs captured
+`IllegalArgumentException: Given String is empty or null` from native
+`FirebaseAuth.signInWithEmailAndPassword`. The visible email was populated and
+the password field empty. Wi-Fi had a validated internet connection.
+
+Added shared empty-email/password validation before SDK calls and before login
+forms clear their password controllers. Missing input now produces `Enter your
+account email.` or `Enter your password.`; a missing email preserves the entered
+password. Sign-in retry tests now supply credentials again after clearing, and
+new administrator/kiosk cases verify no authentication call for blank input.
+All 11 targeted sign-in/diagnostics tests passed; analysis of the five changed
+source/test files reported no issues.
+
+The installed APK was read for its public signing certificate. Its certificate
+does not match this computer's current debug keystore; the original keystore was
+not found in the project or original-user path. No APK was installed or app data
+removed. Source validation and the earlier diagnostics fix remain uninstalled.
+The user must enter credentials directly on the tablet for live authenticated
+session inspection; no account password was requested or entered through tools.
+
+## Power rejection timing correction — 2026-11-10
+
+The user reported `Power: rejected`. Read-only serial checks found a fresh,
+ready NODE-01 reporting OFF and repeated authenticated cloud syncs. The earlier
+command's exact rejection record was not inspected. Source review identified a
+specific timing bug: synchronous HTTPS could age node observations beyond their
+six-second limit before a newly returned power command was evaluated, causing
+immediate rejection despite a healthy node.
+
+`comlab-cloud-power-7` drains queued signed heartbeats after HTTPS, preserving
+their original timestamps. A previously ready node with aged/unavailable power
+feedback now leaves the command waiting for fresh feedback within its original
+expiry. Actual dispatch still requires fresh OFF; no fresh feedback means expiry
+without a pulse. Clock, target, deduplication and reboot protections remain.
+Cloud result details and a boot-local last-completed record expose rejection
+reasons through POWERSTATUS after the cloud acknowledges a terminal result.
+
+All three hardware host suites pass, including stale-at-intake recovery on a
+fresh OFF report, unchanged identity/expiry, and rejection without dispatch when
+fresh feedback never arrives. The controller compiled to 1,189,888 bytes program
+storage (90%) and 53,480 bytes globals (16%). Flash hash verification passed on
+COM10, controller MAC `d4:e9:f4:72:34:cc`.
+
+Boot capture confirmed the exact version 7 banner, AS608 capacity 300 and the
+node receiver. Follow-up POWERSTATUS showed NODE-01 connected, executor ready,
+power OFF, with repeated authenticated cloud acknowledgements reporting one node.
+No relay pulse or new reservation was initiated by the agent. A rejected request
+remains terminal; staff must close its failed active session before a fresh
+student reservation can issue a new command.
+
+## Kiosk timeout investigation — 2026-11-10
+
+Live process health returned HTTP 200 in about 0.5 seconds. A read-only controller
+serial check captured authenticated cloud synchronization with one node and
+NODE-01 reporting OFF with its executor ready. Node freshness can lapse while
+the controller is in a blocking HTTPS exchange; a subsequent signed heartbeat
+was received. No power/bench command was sent.
+
+Found a separate kiosk diagnostics bug: failure of `/health` or cloud controller
+status could fall through to the legacy LAN controller client. The cloud firmware
+does not provide that local HTTP endpoint, producing an unrelated timeout. Source
+now reports the failed cloud stage and uses local diagnostics only when `/health`
+explicitly selects LAN mode. Four regression widget tests pass and targeted
+Flutter analysis reports no issues.
+
+This app fix has not been built or installed on the tablet. The user supplied
+the generic dialog title, `Unable to complete request`; its detailed message is
+still needed to establish the cause of the reported kiosk failure.
+
+## Controller power-on bridge — 2026-11-10
+
+Implemented and uploaded `comlab-cloud-power-6`, matching the node executor
+uploaded earlier. The bridge forwards original command identity/expiry through
+signed node acknowledgements, requires fresh executor/power reports, retains
+newer results across delayed cloud acknowledgements, blocks diagnostic dispatch
+when a power command owns that node, and uses the server's controller-boot
+ownership rules for restart recovery. Reset remains unsupported.
+
+All 41 existing API tests passed. One additional API test passed for refreshing
+aged startup feedback with a higher sequence without command redispatch. The
+relay, actual node executor, and controller lifecycle host suites passed,
+including a combined bridge/node case with one simulated pulse despite retry.
+These are software tests, not physical power-on acceptance.
+
+Final controller build with ESP32 core 3.3.7 / ArduinoJson 7.4.3 / Adafruit
+Fingerprint 2.1.4: 1,188,584 bytes program storage (90%), 53,000 bytes globals
+(16%). Existing local Wi-Fi, cloud credentials and all five node pairings were
+preserved. The firmware/configuration preflight passed without printing secrets.
+
+Uploaded to COM10, controller MAC `d4:e9:f4:72:34:cc`, with flash hash verification.
+Read-only boot capture confirmed the guarded bridge, AS608 capacity 300, the UDP
+node receiver, and repeated authenticated HTTPS sync acknowledgements. POWERSTATUS
+reported no current workstation nodes or commands; the node was not observed
+during this controller-only connection. The serial port was closed afterward.
+
+No diagnostic or production relay pulse was requested. Power both boards and
+validate real manual ON/OFF sensor transitions before supervised kiosk startup.
+See `firmware/POWER_ON_SETUP.md` for the current procedure and handling an older
+rejected reservation.
+
+## Node power-on executor — 2026-11-10
+
+Added the guarded node-only power-on executor documented in
+`firmware/POWER_ON_SETUP.md`. The matching central power-command bridge is still
+required; this upload alone does not enable kiosk power-on. GPIO22 reset is held
+LOW and reset commands remain unimplemented.
+
+`server/scripts/Test-RelayBench.ps1` passes both the relay timer/policy suite and
+the actual power executor with simulated GPIO, JSON fields and persistent NVS.
+Coverage includes duplicate IDs, reboot recovery without replay, final raw-power
+and millisecond-expiry guards, failed storage, wrong targets, known ON, timeout
+without retry, OFF cancellation and corrupt journals.
+
+Installed a local Arduino CLI/toolchain under ignored `server/.local/toolchain`
+on this computer. ESP32 core 3.3.7 / ArduinoJson 7.4.3 compiled the node:
+973,818 bytes program storage (74%), 49,940 bytes globals (15%). Existing local
+Wi-Fi/pairing configuration and enabled GPIO27 sensing were preserved.
+
+Uploaded to NODE-01 / PC-01 on COM10, ESP32 MAC `b0:cb:d8:e9:91:8c`, with esptool
+flash hash verification. NVS was not erased. Read-only STATUS showed GPIO23 LOW,
+disarmed, and the previous diagnostic journal intact. A controlled restart
+captured `Node power-on executor v1 ready`, the matching-controller requirement,
+GPIO27 HIGH/OFF, and Wi-Fi ready. The serial port was then closed.
+
+No ARM/TEST or production power command was sent. Actual relay contacts, real
+ON/OFF sensor transitions, controller bridging and end-to-end kiosk startup have
+not been validated by this node update.
+
 ## GitHub Pages migration - 2026-11-07
 
 The user selected GitHub Pages as the replacement host. The static dashboard

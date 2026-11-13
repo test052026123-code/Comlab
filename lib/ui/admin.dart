@@ -401,7 +401,12 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _studentEditor([Json? s]) async {
     final values = await showDialog<Json>(
       context: context,
-      builder: (_) => StudentEditorDialog(student: s),
+      builder: (_) => StudentEditorDialog(
+        student: s,
+        existingStudentIds: data.students
+            .map((student) => student['id'] as String)
+            .toSet(),
+      ),
     );
     if (!mounted) return;
     if (values != null) {
@@ -575,7 +580,7 @@ class _AdminScreenState extends State<AdminScreen> {
       });
       return;
     }
-    final reason = TextEditingController(), pc = TextEditingController();
+    String reason = '', pc = '';
     final values = await showDialog<Json>(
       context: context,
       builder: (context) => AlertDialog(
@@ -588,13 +593,13 @@ class _AdminScreenState extends State<AdminScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (option == 'reassign')
-              TextField(
-                controller: pc,
+              TextFormField(
+                onChanged: (value) => pc = value,
                 decoration: const InputDecoration(labelText: 'New PC ID'),
               ),
             const SizedBox(height: 16),
-            TextField(
-              controller: reason,
+            TextFormField(
+              onChanged: (value) => reason = value,
               maxLines: 3,
               decoration: const InputDecoration(labelText: 'Required reason'),
             ),
@@ -602,21 +607,26 @@ class _AdminScreenState extends State<AdminScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              FocusScope.of(context).unfocus();
+              Navigator.pop(context);
+            },
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, {
-              'pc': pc.text.trim().toUpperCase(),
-              'reason': reason.text.trim(),
-            }),
+            onPressed: () {
+              FocusScope.of(context).unfocus();
+              Navigator.pop(context, {
+                'pc': pc.trim().toUpperCase(),
+                'reason': reason.trim(),
+              });
+            },
             child: const Text('Confirm'),
           ),
         ],
       ),
     );
-    reason.dispose();
-    pc.dispose();
+    if (!mounted) return;
     if (values != null) {
       await widget.state.run(() async {
         if (option == 'reassign') {

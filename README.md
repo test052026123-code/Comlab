@@ -1,5 +1,18 @@
 # ComLab
 
+Report-and-end update (2026-11-11): the app now exposes **Report a problem**
+during startup, in a session, and for a saved pending operation. The updated API
+saves the report and ends the assignment atomically, holding the workstation
+for staff inspection. Both API deployment and APK installation are required;
+see [report-and-end behavior and rollout](outputs/report-and-end-session.md).
+
+Power-on update: the node executor and `comlab-cloud-net-12` controller bridge
+have been built and uploaded with verified startup/cloud connection. See
+[current power-on setup](firmware/POWER_ON_SETUP.md). Actual kiosk startup and
+real ON/OFF sensor transitions still require supervised hardware acceptance.
+Reset channel GPIO22 remains inactive. Older discovery-only limitations below
+describe the earlier firmware rollout.
+
 Browser administration is implemented in [web/admin](web/admin/README.md).
 Dashboard: https://test052026123-code.github.io/Comlab/
 It reuses the current Firebase admin accounts and trusted API for student and

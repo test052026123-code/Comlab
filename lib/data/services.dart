@@ -20,7 +20,8 @@ class SecureStore implements PrivateStore {
 class ApiFailure implements Exception {
   final String message;
   final int? status;
-  ApiFailure(this.message, [this.status]);
+  final bool retryable;
+  ApiFailure(this.message, [this.status, this.retryable = false]);
   @override
   String toString() => message;
 }
@@ -57,7 +58,14 @@ class CloudRepository implements LabRepository {
       });
     if (data != null) req.body = jsonEncode(data);
     try {
-      final r = await _send(client, req).timeout(requestTimeout);
+      final pollTimeout =
+          method == 'GET' &&
+          (path.startsWith('/fingerprint/requests/') ||
+              path == '/workstations');
+      final r = await _send(
+        client,
+        req,
+      ).timeout(pollTimeout ? const Duration(seconds: 10) : requestTimeout);
       if (r.statusCode >= 300 && r.statusCode < 400) {
         final location = r.headers['location'];
         final destination = location == null ? null : Uri.tryParse(location);
@@ -90,7 +98,11 @@ class CloudRepository implements LabRepository {
         } catch (_) {
           /* reverse proxy may return HTML */
         }
-        throw ApiFailure(message, r.statusCode);
+        throw ApiFailure(
+          message,
+          r.statusCode,
+          [408, 429].contains(r.statusCode) || r.statusCode >= 500,
+        );
       }
       return r;
     } on TimeoutException {
@@ -98,10 +110,14 @@ class CloudRepository implements LabRepository {
         method == 'GET' || path == '/lookup' || path.startsWith('/fingerprint/')
             ? 'The cloud server took too long to respond. It may be starting up. Wait a moment, then try again.'
             : 'Cloud request timed out. The result may be unknown; reconcile the saved operation.',
+        null,
+        true,
       );
     } on http.ClientException {
       throw ApiFailure(
         'Trusted API unreachable. Check Wi-Fi, HTTPS certificate and internet.',
+        null,
+        true,
       );
     }
   }

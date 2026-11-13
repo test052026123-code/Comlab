@@ -1,8 +1,8 @@
 /*
- * ComLab workstation node: authenticated Wi-Fi + USB/app relay bench tests.
+ * ComLab workstation node: authenticated Wi-Fi, guarded power-on and bench tests.
  * ESP32-WROOM DevKit V1, Arduino ESP32 3.3.7, ArduinoJson 7.
  * Manual 300ms relay pulse on GPIO23 through the confirmed 2N2222A interface.
- * Bench pulses only, with no PC attached. No PC power command executor.
+ * Production power-on requires sensor feedback and the matching controller bridge.
  * Requires the updated comlab_cloud controller with the matching local node key.
  */
 #include <WiFi.h>
@@ -19,12 +19,14 @@
 #endif
 #include "RemoteBench.h"
 #include "PowerSense.h"
+#include "RemotePower.h"
 
 static WiFiUDP nodeUdp;
 static IPAddress controllerIp;
 static String nodeBootId;
 static uint32_t sequence = 0, nextReportMs = 0, nextWifiMs = 0, lastAckMs = 0, lastDiscoveryMs = 0;
 static bool configured = false, networkStarted = false;
+static bool centralPowerProtocol = false;
 
 static String makeNodeBootId() {
   char value[33];
@@ -51,8 +53,10 @@ static void receiveAcknowledgements() {
     if (body["protocolVersion"] != 1 || body["nodeId"].as<String>() != COMLAB_NODE_ID ||
         body["bootId"].as<String>() != nodeBootId || body["ackSequence"].as<uint32_t>() != sequence) continue;
     lastAckMs = millis();
-    RemoteBench::accept(body["benchCommand"].as<JsonObjectConst>());
-    Serial.printf("[Node %s / %s] Controller acknowledged heartbeat. PC power: %s. Automatic power control disabled.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID, PowerSense::state());
+    centralPowerProtocol = body["powerSupported"] == true;
+    if (!RemotePower::inFlight) RemoteBench::accept(body["benchCommand"].as<JsonObjectConst>());
+    RemotePower::accept(body["powerCommand"].as<JsonObjectConst>());
+    Serial.printf("[Node %s / %s] Controller acknowledged heartbeat. PC power: %s. Power-on executor v1.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID, PowerSense::state());
   }
 }
 
@@ -74,6 +78,9 @@ static void reportHeartbeat() {
   body["sampledAtMs"] = static_cast<int64_t>(time(nullptr)) * 1000;
   body["power"] = PowerSense::state(); body["reachability"] = "unknown"; body["input"] = "unknown";
   RemoteBench::addReport(body);
+  // Negotiate the extension so older controllers keep accepting heartbeats
+  // while the boards are updated one at a time.
+  if (centralPowerProtocol) RemotePower::addReport(body);
   String raw; serializeJson(body, raw);
   const String packet = nodePacket(COMLAB_NODE_KEY, NODE_REPORT_DOMAIN, raw);
   if (packet.isEmpty()) return;
@@ -88,6 +95,9 @@ void setup() {
   RelayBench::begin();
   RemoteBench::begin();
   PowerSense::begin();
+  // Reset channel stays released; this update implements power-on only.
+  digitalWrite(22, LOW); pinMode(22, OUTPUT);
+  RemotePower::begin();
   configured = strlen(COMLAB_NODE_WIFI_SSID) > 0 && nodeHex(String(COMLAB_NODE_KEY), 64) &&
     String(COMLAB_NODE_ID).length() > 0 && String(COMLAB_WORKSTATION_ID).length() > 0;
   if (!configured) {
@@ -101,13 +111,14 @@ void setup() {
   WiFi.begin(COMLAB_NODE_WIFI_SSID, COMLAB_NODE_WIFI_PASSWORD);
   nextWifiMs = millis() + 10000;
   configTime(0, 0, "pool.ntp.org", "time.google.com");
-  Serial.printf("[Node] Starting %s / %s. Waiting for Wi-Fi and synchronized time. Manual relay bench test ready; automatic power control disabled.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID);
+  Serial.printf("[Node] Starting %s / %s. Waiting for Wi-Fi and synchronized time. Node power-on executor v1; matching controller update required.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID);
 }
 
 void loop() {
-  RelayBench::poll();
+  RelayBench::poll(); // OFF remains available; ARM/TEST respect the power lock.
   RemoteBench::poll();
   PowerSense::poll();
+  RemotePower::poll();
   if (!configured) { delay(100); return; }
   const uint32_t now = millis();
   if (WiFi.status() != WL_CONNECTED) {

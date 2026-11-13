@@ -80,7 +80,9 @@ class PcCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final node = pc['node'] as Json? ?? {};
     final available = pc['eligible'] == true;
-    final occupied = pc['sessionId'] != null || pc['assignment'] == 'assigned';
+    final occupied =
+        pc['sessionId'] != null ||
+        ['assigned', 'reserved', 'in use'].contains(pc['assignment']);
     final status = pc['maintenance'] == true
         ? 'Maintenance'
         : pc['enabled'] == false
@@ -288,105 +290,188 @@ class PcCard extends StatelessWidget {
     Color color,
     bool available,
     Json node,
-  ) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Expanded(
-        child: Container(
-          color: selected ? const Color(0xFFE2F6EF) : const Color(0xFFF1F6F2),
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
+  ) => LayoutBuilder(
+    builder: (context, bounds) {
+      final textScale = MediaQuery.textScalerOf(context).scale(12) / 12;
+      if (bounds.maxHeight < 200 * textScale) {
+        return Padding(
+          padding: const EdgeInsets.all(10),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: SizedBox(
+                width: (bounds.maxWidth - 20).clamp(1, double.infinity),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${pc['id']}',
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: navy,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          selected
+                              ? Icons.check_circle
+                              : Icons.radio_button_unchecked,
+                          size: 20,
+                          color: selected ? teal : color,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
                       status,
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: color,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        color: selected ? teal : const Color(0xFFF1F1EF),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Text(
+                        selected
+                            ? 'Selected'
+                            : available
+                            ? 'Select PC'
+                            : status,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: selected ? Colors.white : color,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Container(
+              color: selected
+                  ? const Color(0xFFE2F6EF)
+                  : const Color(0xFFF1F6F2),
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          status,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        selected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: selected ? teal : const Color(0xFFB8C9C4),
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: 260,
+                          child: LabArtwork(single: true, muted: !available),
+                        ),
                       ),
                     ),
                   ),
-                  Icon(
-                    selected
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    color: selected ? teal : const Color(0xFFB8C9C4),
-                    size: 20,
-                  ),
                 ],
               ),
-              Expanded(
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: 260,
-                      child: LabArtwork(single: true, muted: !available),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${pc['id']}',
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    height: 1.1,
+                    fontWeight: FontWeight.w900,
+                    color: navy,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  admin ? 'Power: ${node['power'] ?? 'unknown'}' : status,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF72768C),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? teal
+                        : available
+                        ? const Color(0xFFE6F5F0)
+                        : const Color(0xFFF1F1EF),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Text(
+                    selected
+                        ? 'Selected'
+                        : available
+                        ? 'Select PC'
+                        : status,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: selected ? Colors.white : color,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${pc['id']}',
-              maxLines: 1,
-              style: const TextStyle(
-                fontSize: 24,
-                height: 1.1,
-                fontWeight: FontWeight.w900,
-                color: navy,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Power: ${node['power'] ?? 'unknown'}',
-              maxLines: 1,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF72768C)),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 9),
-              decoration: BoxDecoration(
-                color: selected
-                    ? teal
-                    : available
-                    ? const Color(0xFFE6F5F0)
-                    : const Color(0xFFF1F1EF),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Text(
-                selected
-                    ? 'Selected'
-                    : available
-                    ? 'Select PC'
-                    : status,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: selected ? Colors.white : color,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ],
+        ],
+      );
+    },
   );
 }
 

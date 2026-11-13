@@ -120,6 +120,29 @@ for (const state of ['pending', 'accepted', 'unknown']) test(`fingerprint-verifi
   assert.ok([...db.docs.entries()].some(([path, record]) => path.startsWith('audit/') &&
     record.action === 'close_session' && record.data.studentEndedUnconfirmedPower === true && record.data.commandState === state));
 });
+test('verified student closes their own session after staff released its markers', async () => {
+  const { lab, actor, db } = fixture();
+  await lab.reserve(actor, request('op1'));
+  db.docs.delete('activeStudents/S1');
+  db.docs.set('workstations/PC-01', { ...db.docs.get('workstations/PC-01'), sessionId: null, assignment: 'available' });
+  await assert.rejects(lab.close(actor, 'op1', 'checkout'), /Assignment integrity|pending or unknown/);
+  await lab.close(actor, 'op1', 'checkout', { studentVerified: true });
+  assert.equal(db.docs.get('sessions/op1').status, 'closed');
+  assert.equal(db.docs.get('workstations/PC-01').assignment, 'available');
+  assert.ok([...db.docs.entries()].some(([path, record]) => path.startsWith('audit/') &&
+    record.action === 'close_session' && record.data.repairedReleasedAssignment === true));
+});
+test('verified student close never releases a PC or marker held by another session', async () => {
+  const { lab, actor, db } = fixture();
+  await lab.reserve(actor, request('op1'));
+  db.docs.set('workstations/PC-01', { ...db.docs.get('workstations/PC-01'), sessionId: 'other-session' });
+  await assert.rejects(lab.close(actor, 'op1', 'checkout', { studentVerified: true }), /Assignment integrity/);
+  db.docs.set('workstations/PC-01', { ...db.docs.get('workstations/PC-01'), sessionId: null });
+  db.docs.set('activeStudents/S1', { sessionId: 'other-session' });
+  await assert.rejects(lab.close(actor, 'op1', 'checkout', { studentVerified: true }), /Assignment integrity/);
+  assert.equal(db.docs.get('sessions/op1').status, 'active');
+  assert.equal(db.docs.get('activeStudents/S1').sessionId, 'other-session');
+});
 test('PC already on creates no command',async()=>{
   const {lab,actor,db}=fixture('on');const result=await lab.reserve(actor,request('op1'));
   assert.equal(result.command,null);assert.equal(db.docs.get('workstations/PC-01').assignment,'in use');

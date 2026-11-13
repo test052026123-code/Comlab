@@ -69,6 +69,14 @@ void main() {
         find.widgetWithText(TextField, 'Trusted API HTTPS address'),
         findsNothing,
       );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email'),
+        'admin@unit.test',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Password'),
+        'test-only-password',
+      );
       await tester.tap(find.text('Sign in'));
       await tester.pump();
       expect(state.requestedApi, 'https://comlab-api.onrender.com');
@@ -98,6 +106,10 @@ void main() {
         findsNothing,
       );
       final password = find.widgetWithText(TextField, 'Kiosk account password');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Kiosk account email'),
+        'kiosk@unit.test',
+      );
       await tester.ensureVisible(password);
       await tester.enterText(password, 'test-only-password');
       await tester.tap(find.text('Authenticate kiosk'));
@@ -106,6 +118,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Test sign-in failure'), findsOneWidget);
       state.response = Completer<void>();
+      await tester.ensureVisible(password);
+      await tester.enterText(password, 'test-only-password');
       await tester.tap(find.text('Authenticate kiosk'));
       await tester.pump();
       state.response.complete();
@@ -118,4 +132,59 @@ void main() {
       state.dispose();
     },
   );
+
+  for (final admin in [true, false]) {
+    for (final missing in ['email', 'password']) {
+      testWidgets(
+        '${admin ? 'admin' : 'kiosk'} blocks empty $missing before authentication',
+        (tester) async {
+          tester.view.physicalSize = const Size(1000, 1800);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final state = SignInState()
+            ..ready = true
+            ..screen = admin ? 'login' : 'setup';
+          await tester.pumpWidget(ComLabApp(state: state));
+          final email = find.widgetWithText(
+            TextField,
+            admin ? 'Email' : 'Kiosk account email',
+          );
+          final password = find.widgetWithText(
+            TextField,
+            admin ? 'Password' : 'Kiosk account password',
+          );
+          await tester.ensureVisible(email);
+          await tester.enterText(
+            email,
+            missing == 'email' ? '   ' : 'admin@unit.test',
+          );
+          await tester.ensureVisible(password);
+          await tester.enterText(
+            password,
+            missing == 'password' ? '' : 'test-only-password',
+          );
+          final button = find.text(admin ? 'Sign in' : 'Authenticate kiosk');
+          await tester.ensureVisible(button);
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          expect(state.requestedApi, isNull);
+          expect(
+            state.error,
+            missing == 'email'
+                ? 'Enter your account email.'
+                : 'Enter your password.',
+          );
+          if (missing == 'email') {
+            expect(
+              tester.widget<TextField>(password).controller!.text,
+              'test-only-password',
+            );
+          }
+          await tester.pumpWidget(const SizedBox());
+          state.dispose();
+        },
+      );
+    }
+  }
 }

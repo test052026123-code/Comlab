@@ -1,0 +1,261 @@
+diff --git a/server/src/index.js b/server/src/index.js
+index f25a2b7..f3c59e3 100644
+--- a/server/src/index.js
++++ b/server/src/index.js
+@@ -13,6 +13,7 @@ import { Fingerprints } from './fingerprints.js';
+ import { RelayBenchTests } from './relay-bench.js';
+ import { adminWebCors } from './admin-web.js';
+ import { Fault, requireThat, csv, approvedRole } from './domain.js';
++import { issueIdSchema } from './issue-schema.js';
+ 
+ if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('ComLab requires real Firebase services.');
+ initializeApp({ credential: applicationDefault() });
+@@ -109,11 +110,17 @@ app.post('/sessions/:id/close', async (req, res) => {
+ });
+ app.post('/issues', async (req, res) => {
+   const data = z.object({ sessionId: uuid, description: text, scanRequestId: uuid.optional() }).strict().parse(req.body);
++  let verifiedStudentId;
+   if (req.actor.role !== 'admin') {
+     const session = (await db.doc(`sessions/${data.sessionId}`).get()).data();
+-    await fingerprints.authorize(req.actor, uuid.parse(data.scanRequestId), session?.studentId);
++    // The creating kiosk can report its own failed startup even after the scan
++    // expires. A different kiosk still needs a fresh proof for this student.
++    if (session && session.createdBy !== req.actor.uid) {
++      await fingerprints.authorize(req.actor, uuid.parse(data.scanRequestId), session.studentId);
++      verifiedStudentId = session.studentId;
++    }
+   }
+-  res.json(await lab.issue(req.actor, data));
++  res.json(await lab.issue(req.actor, data, { verifiedStudentId }));
+ });
+ app.get('/settings', async (req, res) => {
+   const s = (await db.doc('settings/lab').get()).data();
+@@ -150,7 +157,7 @@ app.get('/admin/issues', async (req, res) => res.json({ rows: await lab.list('is
+ app.put('/admin/issues/:id', async (req, res) => {
+   const data = z.object({ status: z.enum(['open', 'investigating', 'resolved']), remarks: z.string().max(1000), resolution: z.string().max(1000) }).strict().parse(req.body);
+   requireThat(data.status !== 'resolved' || data.resolution.trim(), 'Provide a resolution before resolving.');
+-  const issueId = z.string().regex(/^[a-zA-Z0-9]{20}$/).parse(req.params.id);
++  const issueId = issueIdSchema.parse(req.params.id);
+   requireThat((await db.doc(`issues/${issueId}`).get()).exists, 'Issue not found.', 404);
+   res.json(await lab.save(req.actor, 'issues', issueId, data));
+ });
+diff --git a/server/src/service.js b/server/src/service.js
+index 92ac1f5..06d0f97 100644
+--- a/server/src/service.js
++++ b/server/src/service.js
+@@ -110,11 +110,14 @@ export class LabService {
+       if (data.commandId) refs.push(this.ref(`commands/${data.commandId}`));
+       const [a, p, c] = await tx.getAll(...refs);
+       if (!closeDecision(data, c?.data())) return;
+-      requireThat(a.data()?.sessionId === id && p.data()?.sessionId === id, 'Assignment integrity error. Contact administrator.');
++      const repairedMissingStudentAssignment = actor.role === 'admin' && !a.exists && p.data()?.sessionId === id;
++      requireThat((a.data()?.sessionId === id && p.data()?.sessionId === id) || repairedMissingStudentAssignment,
++        'Assignment integrity error. Contact administrator.');
+       tx.update(sr, { status: 'closed', timeOut: stamp(), closeReason: reason, closedBy: actor.uid });
+       tx.delete(refs[0]);
+       tx.update(refs[1], { sessionId: null, assignment: p.data().maintenance ? 'maintenance' : 'available' });
+-      this.audit(tx, actor, 'close_session', { id, reason });
++      this.audit(tx, actor, 'close_session', { id, reason,
++        ...(repairedMissingStudentAssignment ? { repairedMissingStudentAssignment: true } : {}) });
+     });
+     return { closed: true };
+   }
+@@ -185,14 +188,59 @@ export class LabService {
+     });
+     return { canceled: true };
+   }
+-  async issue(actor, data) {
+-    const ref = this.db.collection('issues').doc();
++  async issue(actor, data, { verifiedStudentId } = {}) {
++    // The session ID makes report-and-close retries idempotent after a lost reply.
++    const ref = this.ref(`issues/${data.sessionId}`), sr = this.ref(`sessions/${data.sessionId}`);
+     await this.db.runTransaction(async tx => {
+-      const s = await tx.get(this.ref(`sessions/${data.sessionId}`));
+-      requireThat(s.exists && s.data().status === 'active', 'An active session is required.');
+-      tx.create(ref, { ...data, studentId: s.data().studentId, workstationId: s.data().workstationId, status: 'open', remarks: '', resolution: '', createdBy: actor.uid, at: stamp() });
+-      this.audit(tx, actor, 'report_issue', { id: ref.id, sessionId: data.sessionId });
++      const [prior, original] = await tx.getAll(ref, sr);
++      const permitted = record => actor.role === 'admin' || record.createdBy === actor.uid ||
++        (verifiedStudentId && record.studentId === verifiedStudentId);
++      if (prior.exists) {
++        requireThat(permitted(prior.data()), 'Report belongs to another kiosk.', 403);
++        requireThat(prior.data().sessionClosed === true, 'Existing report requires staff review.');
++        return;
++      }
++      let session = original.data();
++      const commandId = session?.commandId ?? data.sessionId;
++      const command = (await tx.get(this.ref(`commands/${commandId}`))).data();
++      if (!session) {
++        // Recover a manually deleted session only from matching trusted records.
++        requireThat(command, 'Session is missing. Ask staff to repair its assignment.', 404);
++        requireThat(actor.role === 'admin' || command.createdBy === actor.uid, 'Operation belongs to another kiosk.', 403);
++        const active = await tx.get(this.db.collection('activeStudents').where('sessionId', '==', data.sessionId));
++        requireThat(active.docs.length === 1, 'Missing session assignment requires staff repair.');
++        const studentId = active.docs[0].id;
++        const student = (await tx.get(this.ref(`students/${studentId}`))).data();
++        requireThat(student, 'Student record is missing.', 404);
++        session = { id: data.sessionId, studentId, name: student.name, section: student.section,
++          workstationId: command.workstationId, createdBy: command.createdBy,
++          commandId, status: 'active', timeIn: command.at ?? null, recoveredAfterDeletion: true };
++      }
++      requireThat(permitted(session), 'Session belongs to another kiosk.', 403);
++      requireThat(session.status === 'active', 'Session is already closed.');
++      if (command) requireThat(command.workstationId === session.workstationId && command.createdBy === session.createdBy,
++        'Power command does not match this assignment.');
++      const ar = this.ref(`activeStudents/${session.studentId}`), pr = this.ref(`workstations/${session.workstationId}`);
++      const [active, pc] = await tx.getAll(ar, pr);
++      requireThat(active.data()?.sessionId === data.sessionId && pc.data()?.sessionId === data.sessionId,
++        'Assignment changed. Ask staff to inspect the session.');
++      tx.create(ref, { sessionId: data.sessionId, description: data.description,
++        studentId: session.studentId, workstationId: session.workstationId,
++        status: 'open', remarks: '', resolution: '', createdBy: actor.uid, at: stamp(), sessionClosed: true });
++      const closed = { status: 'closed', timeOut: stamp(), closeReason: 'Problem reported: ' + data.description,
++        closedBy: actor.uid, issueId: ref.id };
++      if (original.exists) tx.update(sr, closed);
++      else tx.create(sr, { ...session, ...closed });
++      tx.delete(ar);
++      // An in-flight relay pulse cannot be recalled. Quarantine the PC and retain
++      // the actual command result for staff instead of inventing power success.
++      tx.update(pr, { sessionId: null, assignment: 'maintenance', maintenance: true });
++      if (command?.delivery === 'cloud' && command.controllerId) {
++        tx.delete(this.db.doc(`controllerQueue/${command.controllerId}/commands/${commandId}`));
++      }
++      this.audit(tx, actor, 'report_and_close_session', { id: ref.id, sessionId: data.sessionId,
++        recoveredAfterDeletion: !original.exists, workstationId: session.workstationId });
+     });
+-    return { id: ref.id };
++    return { id: ref.id, sessionClosed: true, workstationUnderMaintenance: true };
+   }
+ }
+diff --git a/server/test/service.test.js b/server/test/service.test.js
+index 434661a..3c26c11 100644
+--- a/server/test/service.test.js
++++ b/server/test/service.test.js
+@@ -13,6 +13,68 @@ function fixture(power = 'off') {
+   return { db, controller, lab:new LabService(db,controller), actor:{uid:'approved-kiosk',role:'kiosk'} };
+ }
+ const request = (operationId, studentId='S1', workstationId='PC-01') => ({operationId,studentId,workstationId});
++
++for (const power of ['off', 'on']) test(`report ends a session atomically and holds the PC: ${power}`, async () => {
++  const { lab, actor, db } = fixture(power);
++  await lab.reserve(actor, request('report-op'));
++  const command = db.docs.get('commands/report-op');
++  if (command) {
++    db.docs.set('commands/report-op', { ...command, state: 'unknown', delivery: 'cloud', controllerId: 'CENTRAL' });
++    db.docs.set('controllerQueue/CENTRAL/commands/report-op', { commandId: 'report-op' });
++  }
++  const report = await lab.issue(actor, { sessionId: 'report-op', description: 'PC did not start' });
++  assert.equal(report.sessionClosed, true);
++  assert.equal(db.docs.get('sessions/report-op').status, 'closed');
++  assert.equal(db.docs.get('issues/report-op').description, 'PC did not start');
++  assert.ok(!db.docs.has('activeStudents/S1'));
++  assert.equal(db.docs.get('workstations/PC-01').sessionId, null);
++  assert.equal(db.docs.get('workstations/PC-01').maintenance, true);
++  assert.equal(db.docs.get('workstations/PC-01').assignment, 'maintenance');
++  assert.ok(!db.docs.has('controllerQueue/CENTRAL/commands/report-op'));
++  if (command) assert.equal(db.docs.get('commands/report-op').state, 'unknown');
++  const end = db.docs.get('sessions/report-op').timeOut;
++  assert.deepEqual(await lab.issue(actor, { sessionId: 'report-op', description: 'Retry' }), report);
++  assert.equal(db.docs.get('sessions/report-op').timeOut, end);
++  assert.equal([...db.docs.keys()].filter(k => k.startsWith('issues/')).length, 1);
++});
++
++test('report repairs a manually deleted session only from matching records', async () => {
++  const { lab, actor, db } = fixture();
++  await lab.reserve(actor, request('deleted-op'));
++  db.docs.delete('sessions/deleted-op');
++  await lab.issue(actor, { sessionId: 'deleted-op', description: 'Failed startup' });
++  assert.equal(db.docs.get('sessions/deleted-op').status, 'closed');
++  assert.equal(db.docs.get('sessions/deleted-op').recoveredAfterDeletion, true);
++  assert.equal(db.docs.get('sessions/deleted-op').studentId, 'S1');
++  assert.ok(!db.docs.has('activeStudents/S1'));
++});
++
++test('report refuses another kiosk and conflicting assignments without partial writes', async () => {
++  const { lab, actor, db } = fixture();
++  await lab.reserve(actor, request('owned-op'));
++  const other = { role: 'kiosk', uid: 'other-kiosk' };
++  await assert.rejects(lab.issue(other, { sessionId: 'owned-op', description: 'Wrong owner' }), /another kiosk/);
++  db.docs.delete('sessions/owned-op');
++  await assert.rejects(lab.issue(other, { sessionId: 'owned-op', description: 'Wrong owner' }), /another kiosk/);
++  db.docs.set('workstations/PC-01', { ...db.docs.get('workstations/PC-01'), sessionId: 'new-session' });
++  await assert.rejects(lab.issue(actor, { sessionId: 'owned-op', description: 'Stale' }), /Assignment changed/);
++  assert.ok(!db.docs.has('issues/owned-op'));
++  assert.ok(!db.docs.has('sessions/owned-op'));
++  assert.equal(db.docs.get('activeStudents/S1').sessionId, 'owned-op');
++  assert.equal(db.docs.get('workstations/PC-01').sessionId, 'new-session');
++});
++
++test('report retry cannot close a newer assignment or expose another kiosk report', async () => {
++  const { lab, actor, db } = fixture('on');
++  await lab.reserve(actor, request('old-op'));
++  await lab.issue(actor, { sessionId: 'old-op', description: 'Keyboard broken' });
++  db.docs.set('workstations/PC-01', { ...db.docs.get('workstations/PC-01'), maintenance: false });
++  await lab.reserve(actor, request('new-op'));
++  await lab.issue(actor, { sessionId: 'old-op', description: 'Retry' });
++  assert.equal(db.docs.get('workstations/PC-01').sessionId, 'new-op');
++  assert.equal(db.docs.get('sessions/new-op').status, 'active');
++  await assert.rejects(lab.issue({ uid: 'other', role: 'kiosk' }, { sessionId: 'old-op', description: 'Retry' }), /another kiosk/);
++});
+ test('competing students cannot receive the same PC', async () => {
+   const {lab,actor,db} = fixture();
+   const results = await Promise.allSettled([lab.reserve(actor,request('op1')),lab.reserve(actor,request('op2','S2'))]);
+@@ -47,6 +109,32 @@ test('PC already on creates no command',async()=>{
+   assert.equal(result.command,null);assert.equal(db.docs.get('workstations/PC-01').assignment,'in use');
+   await lab.close(actor,'op1','checkout');assert.equal(db.docs.get('sessions/op1').status,'closed');
+ });
++
++test('staff closure repairs a missing student marker when the PC still belongs to that session', async () => {
++  const { lab, actor, db } = fixture('on');
++  await lab.reserve(actor, request('repair-op'));
++  db.docs.delete('activeStudents/S1');
++  await assert.rejects(lab.close(actor, 'repair-op', 'Checkout'), /Assignment integrity/);
++  await lab.close({ uid: 'staff', role: 'admin' }, 'repair-op', 'Repair manually deleted marker');
++  assert.equal(db.docs.get('sessions/repair-op').status, 'closed');
++  assert.equal(db.docs.get('workstations/PC-01').sessionId, null);
++  assert.ok([...db.docs.entries()].some(([path, record]) => path.startsWith('audit/') &&
++    record.action === 'close_session' && record.data.repairedMissingStudentAssignment === true));
++});
++
++test('staff missing-marker recovery never bypasses unresolved power or another student assignment', async () => {
++  const { lab, actor, db } = fixture();
++  const staff = { uid: 'staff', role: 'admin' };
++  await lab.reserve(actor, request('blocked-op'));
++  db.docs.delete('activeStudents/S1');
++  await assert.rejects(lab.close(staff, 'blocked-op', 'Close'), /pending or unknown/);
++  db.docs.set('commands/blocked-op', { ...db.docs.get('commands/blocked-op'), state: 'rejected' });
++  db.docs.set('activeStudents/S1', { sessionId: 'another-session' });
++  await assert.rejects(lab.close(staff, 'blocked-op', 'Close'), /Assignment integrity/);
++  assert.equal(db.docs.get('sessions/blocked-op').status, 'active');
++  assert.equal(db.docs.get('activeStudents/S1').sessionId, 'another-session');
++  assert.equal(db.docs.get('workstations/PC-01').sessionId, 'blocked-op');
++});
+ test('disabled, maintenance, stale, disconnected, unmapped and unknown-power nodes are excluded',()=>{
+   const pc={id:'PC-01',nodeId:'N1',enabled:true,maintenance:false,sessionId:null};
+   const n={workstationId:'PC-01',nodeId:'N1',power:'off',connectivity:'connected',observedAt:new Date().toISOString()};
+diff --git a/server/src/issue-schema.js b/server/src/issue-schema.js
+new file mode 100644
+--- /dev/null
++++ b/server/src/issue-schema.js
+@@ -0,0 +1,4 @@
++import { z } from 'zod';
++
++// Legacy reports used Firestore auto IDs. Report-and-close uses the session UUID.
++export const issueIdSchema = z.union([z.string().regex(/^[a-zA-Z0-9]{20}$/), z.uuid()]);
+diff --git a/server/test/issue-schema.test.js b/server/test/issue-schema.test.js
+new file mode 100644
+--- /dev/null
++++ b/server/test/issue-schema.test.js
+@@ -0,0 +1,12 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { issueIdSchema } from '../src/issue-schema.js';
++
++test('admin issue updates accept legacy report IDs and report-and-close UUIDs', () => {
++  for (const id of ['abcdefghijklmnopqrst', '52b4e728-b01e-4102-84ed-05768972fb4e']) {
++    assert.equal(issueIdSchema.parse(id), id);
++  }
++  for (const id of ['', 'unknown', '../students/S1', 'issues/report', '52b4e728-b01e-4102-84ed-05768972fb4e/extra']) {
++    assert.equal(issueIdSchema.safeParse(id).success, false);
++  }
++});

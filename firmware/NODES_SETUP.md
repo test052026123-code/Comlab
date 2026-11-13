@@ -1,5 +1,10 @@
 # Workstation node discovery firmware
 
+Current node source also includes optional GPIO33 power sensing and the guarded
+[power-on executor](POWER_ON_SETUP.md). Kiosk power-on requires the matching
+`comlab-cloud-net-12` central controller; the original discovery/bench controller
+cannot execute it. The discovery-only limitations below describe the earlier rollout.
+
 This version implements authenticated node heartbeats on the laboratory Wi-Fi.
 It does not execute cloud relay commands or sense PC power. The optional
 [USB relay bench test](RELAY_TEST.md) supports one manual pulse after arming,

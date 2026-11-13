@@ -7,5 +7,5 @@
 #define COMLAB_NODE_KEY ""
 #define COMLAB_CONTROLLER_HOST "comlab-controller"
 
-// Optional: EL817 power sense on GPIO27 (see PowerSense.h). 1 only when wired.
+// Optional: EL817 power sense on GPIO33 (see PowerSense.h). 1 only when wired.
 #define COMLAB_NODE_POWER_SENSE 0

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/contracts.dart';
 import 'widgets.dart';
+import 'form_dialog.dart';
 
 class WorkstationEditorDialog extends StatefulWidget {
   const WorkstationEditorDialog({super.key, this.workstation, this.assigned});
@@ -40,12 +41,10 @@ class _WorkstationEditorDialogState extends State<WorkstationEditorDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(
-      widget.workstation == null
-          ? 'Create PC-01 through PC-05'
-          : '${widget.workstation!['id']} details',
-    ),
+  Widget build(BuildContext context) => FormDialog(
+    title: widget.workstation == null
+        ? 'Create PC-01 through PC-05'
+        : '${widget.workstation!['id']} details',
     content: SizedBox(
       width: 500,
       child: SingleChildScrollView(

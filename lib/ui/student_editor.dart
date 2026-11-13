@@ -1,9 +1,16 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../core/contracts.dart';
+import 'form_dialog.dart';
 
 class StudentEditorDialog extends StatefulWidget {
-  const StudentEditorDialog({super.key, this.student});
+  const StudentEditorDialog({
+    super.key,
+    this.student,
+    this.existingStudentIds = const {},
+  });
   final Json? student;
+  final Set<String> existingStudentIds;
 
   @override
   State<StudentEditorDialog> createState() => _StudentEditorDialogState();
@@ -12,7 +19,31 @@ class StudentEditorDialog extends StatefulWidget {
 class _StudentEditorDialogState extends State<StudentEditorDialog> {
   late final TextEditingController id, name, section, fingerprintSlot;
   late bool active;
-  String? slotError;
+  String? slotError, idError;
+
+  void generateId() {
+    final year = DateTime.now().year;
+    final taken = {
+      ...widget.existingStudentIds,
+      id.text,
+    }.map((value) => value.trim().toUpperCase()).toSet();
+    final start = Random.secure().nextInt(10000);
+    for (var offset = 0; offset < 10000; offset++) {
+      final suffix = ((start + offset) % 10000).toString().padLeft(4, '0');
+      final candidate = 'STU-$year$suffix';
+      if (taken.contains(candidate)) continue;
+      id.value = TextEditingValue(
+        text: candidate,
+        selection: TextSelection.collapsed(offset: candidate.length),
+      );
+      setState(() => idError = null);
+      return;
+    }
+    setState(
+      () => idError =
+          'All generated IDs for $year are in use. Enter a different unique ID.',
+    );
+  }
 
   @override
   void initState() {
@@ -42,8 +73,8 @@ class _StudentEditorDialogState extends State<StudentEditorDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.student == null ? 'Register student' : 'Edit student'),
+  Widget build(BuildContext context) => FormDialog(
+    title: widget.student == null ? 'Register student' : 'Edit student',
     content: SizedBox(
       width: 480,
       child: SingleChildScrollView(
@@ -53,7 +84,19 @@ class _StudentEditorDialogState extends State<StudentEditorDialog> {
             TextField(
               controller: id,
               enabled: widget.student == null,
-              decoration: const InputDecoration(labelText: 'Unique student ID'),
+              onChanged: (_) {
+                if (idError != null) setState(() => idError = null);
+              },
+              decoration: InputDecoration(
+                labelText: 'Unique student ID',
+                errorText: idError,
+                suffixIcon: widget.student == null
+                    ? TextButton(
+                        onPressed: generateId,
+                        child: const Text('Generate'),
+                      )
+                    : null,
+              ),
             ),
             const SizedBox(height: 16),
             TextField(

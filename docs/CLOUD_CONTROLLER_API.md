@@ -1,5 +1,12 @@
 # Implemented outbound controller protocol, version 1
 
+Current hardware update: `comlab-cloud-power-7` forwards guarded power-on commands
+to the updated node executor and advertises `power_on` only when fresh executor
+and known-power reports are available. Optional GPIO27 sensing and node NVS
+deduplication are implemented. See [power-on setup](../firmware/POWER_ON_SETUP.md).
+The connection/discovery-only firmware limits later in this document describe
+the earlier rollout. End-to-end physical kiosk power-on remains unverified.
+
 Remote bench extension: optional sync fields `benchSupported` (boolean),
 `benchNodes` (up to five ready node IDs), and `benchResult` (command UUID,
 node/workstation IDs, state `pulse_finished`, `rejected`, or `unknown`). Replies

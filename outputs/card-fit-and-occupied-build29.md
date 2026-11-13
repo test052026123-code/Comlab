@@ -1,0 +1,9 @@
+# PC selection card fit and occupied label ? build 29
+
+Live U24 Pro screenshot showed BOTTOM OVERFLOWED BY 3.7 PIXELS inside the single PC-01 card while the busy bar was visible. The decorative header required more height than the fixed card could provide. Added a compact card presentation when height/text scaling leaves insufficient room: the PC ID, selection control, availability and action remain bounded, with decoration omitted and scale-down only if needed. Normal-height cards retain artwork. Student cards show availability rather than raw Power: unknown.
+
+Occupancy now recognizes assignment values assigned/reserved/in use even when a legacy response omits sessionId. Live backend inspection confirmed PC-01 assignment reserved, sessionId 42030b29-d810-454b-a528-bf47d08ea639 for Mark Brian, not maintenance and not disabled. NODE-01 connected; controller comlab-cloud-net-12 syncing. The tablet user was Bryan. PC-01 is correctly excluded because another student's booking remains active; no assignment was released or power pulse sent during this fix.
+
+Validation: all 85 Flutter tests pass; focused analysis clean. Added exact 1280x800, 1.5 DPR, system inset and busy-bar regression tests for one available/reserved/offline PC, including missing sessionId reserved responses. Added short-card enlarged-text overflow test. Signed build 29 APK installed using adb install -r, preserving data. Artifact: build/app/outputs/flutter-apk/ComLab-Card-Fit-build29.apk.
+
+The current Mark Brian reservation and unresolved startup journal remain intact. To reuse PC-01 for another student, staff must resolve the existing assignment and physical power state; do not force it available while the current session remains active or send another pulse to the running PC. GPIO33 feedback remains a separate physical fault.

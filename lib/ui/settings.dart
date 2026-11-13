@@ -48,10 +48,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> diagnose() async {
     final s = widget.state;
     final results = <String>[];
+    Map<String, dynamic> health;
     try {
-      final h = await s.repository.get('/health');
-      results.add('Firebase via trusted API: ${h['firebase']}');
-      if (h['controllerTransport'] == 'cloud') {
+      health = await s.repository.get('/health');
+    } catch (e) {
+      results.add('Firebase via trusted API: $e');
+      results.add(
+        'Controller status was not checked. Retry the cloud connection check.',
+      );
+      if (mounted) setState(() => diagnostics = results.join('\n\n'));
+      return;
+    }
+    results.add('Firebase via trusted API: ${health['firebase']}');
+    if (health['controllerTransport'] == 'cloud') {
+      try {
         final controller = await s.repository.get('/controller/status');
         results.add(
           'Controller via cloud: ${controller['connected'] == true ? 'connected' : 'offline'}',
@@ -59,11 +69,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         results.add(
           'Reported workstation nodes: ${controller['reportedNodes'] ?? 0}',
         );
-        if (mounted) setState(() => diagnostics = results.join('\n\n'));
-        return;
+      } catch (e) {
+        results.add('Controller via cloud: $e');
       }
-    } catch (e) {
-      results.add('Firebase via trusted API: $e');
+      if (mounted) setState(() => diagnostics = results.join('\n\n'));
+      return;
+    }
+    if (health['controllerTransport'] != 'lan') {
+      results.add(
+        'Controller transport was not recognized. Check the trusted API configuration.',
+      );
+      if (mounted) setState(() => diagnostics = results.join('\n\n'));
+      return;
     }
     try {
       await s.devices.health();
@@ -169,6 +186,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     : () => s.run(() async {
                         final signInEmail = email.text;
                         final signInPassword = password.text;
+                        LabState.validateSignInCredentials(
+                          signInEmail,
+                          signInPassword,
+                        );
                         FocusScope.of(context).unfocus();
                         password.clear();
                         await s.login(
