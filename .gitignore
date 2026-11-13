@@ -57,3 +57,5 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+pi-server/node_modules/
+pi-server/*.db*
