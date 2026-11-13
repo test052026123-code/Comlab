@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The kiosk talks only to the ComLab Raspberry Pi on the lab LAN over plain HTTP.
+     The address is configurable at setup, so cleartext is allowed app-wide. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">comlab-controller.local</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
