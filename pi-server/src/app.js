@@ -17,7 +17,8 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerpri
   const app = express();
   app.disable('x-powered-by');
   // Plain HTTP on the lab LAN: do not tell browsers to upgrade to HTTPS.
-  app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } }, strictTransportSecurity: false }), express.json({ limit: '64kb' }));
+  // COOP and Origin-Agent-Cluster only work over HTTPS; on the LAN they just print browser warnings.
+  app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } }, strictTransportSecurity: false, crossOriginOpenerPolicy: false, originAgentCluster: false }), express.json({ limit: '64kb' }));
   app.use(express.static(fileURLToPath(new URL('../public', import.meta.url)), { index: 'index.html', maxAge: 0 }));
   const h = fn => async (req, res, next) => { try { res.json(await fn(req, res)); } catch (e) { next(e); } };
   const roles = (...allowed) => (req, res, next) =>
