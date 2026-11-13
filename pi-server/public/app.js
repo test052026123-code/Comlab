@@ -401,6 +401,7 @@ function mapHtml(pcs, { editing = false } = {}) {
 }
 
 function pcDialog(p, refresh) {
+  if (!p) return;
   const canEnd = !!p.session, canMaint = TECH.includes(me.role);
   const f = openModal(`<h3>${esc(p.label)} <small class="muted">${esc(p.id)}</small></h3>
     <p>${badge(p.status)} ${p.online ? `· power ${esc(p.power)} · signal ${esc(p.rssi ?? '?')} dBm · ${esc(p.ip ?? '')}` : '· node offline'}</p>
@@ -709,7 +710,7 @@ async function classAttendancePage() {
   const mineFirst = classes.slice().sort((a, b) => (b.instructorId === me.id) - (a.instructorId === me.id) || a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime));
   const todayDow = new Date().getDay();
   const wanted = new URLSearchParams(location.hash.split('?')[1] ?? '').get('class')
-    ?? (mineFirst.find(c => c.dayOfWeek === todayDow && c.instructorId === me.id) ?? mineFirst.find(c => c.dayOfWeek === todayDow) ?? mineFirst[0]).id;
+    ?? (mineFirst.find(c => c.dayOfWeek === todayDow && c.instructorId === me.id) ?? mineFirst.find(c => c.dayOfWeek === todayDow) ?? mineFirst[0])?.id;
   const v = $('#view');
   if (!classes.length) { v.innerHTML = `<div class="card">${emptyState('No class schedules yet. Add them under Class schedules.', 'clock')}</div>`; return; }
   v.innerHTML = `<form class="toolbar" id="flt"><label class="grow">Class<select name="classId">${mineFirst.map(c => `<option value="${esc(c.id)}" ${c.id === wanted ? 'selected' : ''}>${esc(name(c))}${c.instructorId === me.id ? ' (mine)' : ''}</option>`).join('')}</select></label>
