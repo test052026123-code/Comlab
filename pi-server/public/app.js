@@ -117,25 +117,25 @@ $('#logout').onclick = signOut;
 $('#menu').onclick = () => $('.side').classList.toggle('open');
 
 // ------------------------------------------------------------------ NAV
-const ALL = ['admin', 'technician', 'instructor'], TECH = ['admin', 'technician'], ADMIN = ['admin'];
+const ALL = ['admin', 'technician', 'instructor'], TECH = ['admin', 'technician'], TEACH = ['admin', 'instructor'], ADMIN = ['admin'];
 // [id, title, roles, render, icon, group]
 const PAGES = [
   ['Monitoring'],
   ['overview', 'Overview', ALL, overview, 'grid'],
-  ['attendance', 'Attendance', ALL, attendancePage, 'calendar'],
-  ['class-attendance', 'Class attendance', ALL, classAttendancePage, 'list'],
-  ['analytics', 'Analytics', ALL, analyticsPage, 'trend'],
+  ['attendance', 'Attendance', TEACH, attendancePage, 'calendar'],
+  ['class-attendance', 'Class attendance', TEACH, classAttendancePage, 'list'],
+  ['analytics', 'Analytics', TEACH, analyticsPage, 'trend'],
   ['Laboratory'],
   ['workstations', 'Workstations & map', ALL, workstationsPage, 'map'],
-  ['issues', 'Error reports', ALL, () => crudPage('issues'), 'alert'],
+  ['issues', 'Error reports', TECH, () => crudPage('issues'), 'alert'],
   ['maintenance', 'Maintenance logs', TECH, () => crudPage('maintenance'), 'wrench'],
   ['inventory', 'Inventory', TECH, () => crudPage('inventory'), 'box'],
   ['reports', 'Reports & analytics', ALL, reportsPage, 'chart'],
   ['Records'],
-  ['students', 'Students', ALL, () => crudPage('students'), 'users'],
-  ['classes', 'Class schedules', ALL, () => crudPage('classes'), 'clock'],
-  ['sections', 'Sections', ALL, () => crudPage('sections'), 'layers'],
-  ['subjects', 'Subjects', ALL, () => crudPage('subjects'), 'book'],
+  ['students', 'Students', TEACH, () => crudPage('students'), 'users'],
+  ['classes', 'Class schedules', TEACH, () => crudPage('classes'), 'clock'],
+  ['sections', 'Sections', ADMIN, () => crudPage('sections'), 'layers'],
+  ['subjects', 'Subjects', ADMIN, () => crudPage('subjects'), 'book'],
   ['System'],
   ['users', 'Staff accounts', ADMIN, () => crudPage('users'), 'shield'],
   ['fingerprints', 'Fingerprint sensor', ADMIN, fingerprintsPage, 'fingerprint'],
@@ -390,7 +390,7 @@ function enrollDialog(personType, personId, name, onDone) {
 function mapHtml(pcs, { editing = false } = {}) {
   const placed = pcs.some(p => p.mapX || p.mapY) || editing;
   const tile = p => {
-    const who = p.session?.studentName ? `${esc(p.session.studentName)} · ${time(p.session.timeIn)}` : (p.online ? `Power ${esc(p.power)}` : 'Node offline');
+    const who = p.session ? (p.session.studentName ? `${esc(p.session.studentName)} · ${time(p.session.timeIn)}` : `Since ${time(p.session.timeIn)}`) : (p.online ? `Power ${esc(p.power)}` : 'Node offline');
     const pos = placed ? `left:${Math.min(p.mapX, 87)}%;top:${Math.min(p.mapY, 80)}%` : '';
     const ic = p.status === 'OFFLINE' ? 'wifiOff' : p.status === 'MAINTENANCE' ? 'wrench' : p.status === 'OFF' ? 'power' : 'monitor';
     return `<div class="pc s-${p.status}" data-pc="${esc(p.id)}" style="${pos}"><div class="pc-top"><b>${esc(p.label)}</b><span class="pc-ic">${icon(editing ? 'move' : ic)}</span></div>
@@ -405,7 +405,7 @@ function pcDialog(p, refresh) {
   const f = openModal(`<h3>${esc(p.label)} <small class="muted">${esc(p.id)}</small></h3>
     <p>${badge(p.status)} ${p.online ? `· power ${esc(p.power)} · signal ${esc(p.rssi ?? '?')} dBm · ${esc(p.ip ?? '')}` : '· node offline'}</p>
     <p class="muted">Last heartbeat: ${p.lastSeen ? fmt(p.lastSeen) : 'never'}</p>
-    ${p.session ? `<div class="card"><b>${esc(p.session.studentName)}</b> (${esc(p.session.studentId)})<br><span class="muted">Time in ${fmt(p.session.timeIn)}</span>
+    ${p.session ? `<div class="card"><b>${p.session.studentName ? `${esc(p.session.studentName)} (${esc(p.session.studentId)})` : 'In use by a student'}</b><br><span class="muted">Time in ${fmt(p.session.timeIn)}</span>
       <label style="margin-top:10px">Reason for ending<input id="reason" value="Ended by ${esc(me.role)}"></label></div>` : ''}
     ${p.notes ? `<p class="muted">Notes: ${esc(p.notes)}</p>` : ''}
     <footer>
@@ -433,26 +433,28 @@ async function overview() {
     ? `<div class="panel"><div class="panel-head"><h3>${icon('list')} My classes today</h3><a href="#/class-attendance">Open attendance sheet</a></div><div class="panel-body" id="mine"></div></div>`
     : me.role === 'technician'
       ? `<div class="panel"><div class="panel-head"><h3>${icon('wrench')} Assigned to me</h3><a href="#/issues">All error reports</a></div><div class="table-wrap" id="mine"></div></div>` : '';
+  const seesPeople = TEACH.includes(me.role), seesIssues = TECH.includes(me.role);
   v.innerHTML = `<div class="stats" id="stats"></div>
     <div class="two"><div class="panel"><div class="panel-head"><h3>${icon('bell')} Alerts</h3><span class="muted" id="alertCount"></span></div><div class="panel-body" id="alerts"></div></div>
     ${mine || `<div class="panel"><div class="panel-head"><h3>${icon('trend')} Attendance this week</h3><a href="#/analytics">Analytics</a></div><div class="panel-body" id="trend"></div></div>`}</div>
     <div class="panel"><div class="panel-head"><h3>${icon('map')} Interactive laboratory map</h3><span class="muted">Click a PC for details · updates every 5 s</span></div><div class="panel-body" id="mapBox"></div></div>
-    <div class="two"><div class="panel"><div class="panel-head"><h3>${icon('users')} Active users</h3></div><div class="table-wrap" id="active"></div></div>
-    <div class="panel"><div class="panel-head"><h3>${icon('alert')} Open error reports</h3><a href="#/issues">View all</a></div><div class="table-wrap" id="openIssues"></div></div></div>`;
+    <div class="${seesPeople && seesIssues ? 'two' : ''}">
+    ${seesPeople ? `<div class="panel"><div class="panel-head"><h3>${icon('users')} Active users</h3></div><div class="table-wrap" id="active"></div></div>` : ''}
+    ${seesIssues ? `<div class="panel"><div class="panel-head"><h3>${icon('alert')} Open error reports</h3><a href="#/issues">View all</a></div><div class="table-wrap" id="openIssues"></div></div>` : ''}</div>`;
   let pcs = [];
   const refresh = run(async () => {
-    const [s, live, issues] = await Promise.all([api('/api/summary'), api('/workstations/live'), api('/api/issues')]);
+    const [s, live, issues] = await Promise.all([api('/api/summary'), api('/workstations/live'), seesIssues ? api('/api/issues') : { rows: [] }]);
     pcs = live.workstations;
     const w = s.workstations;
-    $('#stats').innerHTML = stat(s.activeSessions, 'Active users', 'users', 't-blue') + stat(s.attendanceToday, 'Students today', 'calendar', 't-violet')
-      + stat(`${w.idle + w.off}/${w.total}`, 'PCs available', 'monitor', 't-green') + stat(w.offline, 'PCs offline', 'wifiOff', 't-grey')
-      + stat(w.maintenance, 'Under maintenance', 'wrench', 't-amber') + stat(s.openIssues, 'Open error reports', 'alert', s.openIssues ? 't-red' : 't-green');
+    const people = seesPeople ? stat(s.activeSessions, 'Active users', 'users', 't-blue') + stat(s.attendanceToday, 'Students today', 'calendar', 't-violet') : stat(w.inUse, 'PCs in use', 'monitor', 't-blue');
+    $('#stats').innerHTML = people + stat(`${w.idle + w.off}/${w.total}`, 'PCs available', 'monitor', 't-green') + stat(w.offline, 'PCs offline', 'wifiOff', 't-grey')
+      + stat(w.maintenance, 'Under maintenance', 'wrench', 't-amber') + (seesIssues ? stat(s.openIssues, 'Open error reports', 'alert', s.openIssues ? 't-red' : 't-green') : '');
     $('#mapBox').innerHTML = mapHtml(pcs);
     const act = pcs.filter(p => p.session);
-    $('#active').innerHTML = act.length ? `<table><tr><th>Student</th><th>PC</th><th>Time in</th></tr>${act.map(p => `<tr><td>${person(p.session.studentName, p.session.studentId)}</td><td>${esc(p.label)}</td><td>${time(p.session.timeIn)}</td></tr>`).join('')}</table>` : emptyState('No one is using the lab right now.', 'users');
+    if ($('#active')) $('#active').innerHTML = act.length ? `<table><tr><th>Student</th><th>PC</th><th>Time in</th></tr>${act.map(p => `<tr><td>${person(p.session.studentName, p.session.studentId)}</td><td>${esc(p.label)}</td><td>${time(p.session.timeIn)}</td></tr>`).join('')}</table>` : emptyState('No one is using the lab right now.', 'users');
     await overviewExtras();
     const open = issues.rows.filter(i => i.status !== 'resolved').slice(0, 8);
-    $('#openIssues').innerHTML = open.length ? `<table><tr><th>PC</th><th>Problem</th><th>Status</th></tr>${open.map(i => `<tr><td>${esc(i.workstationId ?? '')}</td><td>${esc(i.description)}</td><td>${badge(i.status)}</td></tr>`).join('')}</table>` : emptyState('No open error reports.', 'check');
+    if ($('#openIssues')) $('#openIssues').innerHTML = open.length ? `<table><tr><th>PC</th><th>Problem</th><th>Status</th></tr>${open.map(i => `<tr><td>${esc(i.workstationId ?? '')}</td><td>${esc(i.description)}</td><td>${badge(i.status)}</td></tr>`).join('')}</table>` : emptyState('No open error reports.', 'check');
   });
   await refresh();
   timer = setInterval(refresh, 5000);
@@ -542,7 +544,7 @@ async function attendancePage() {
 }
 
 async function reportsPage() {
-  const avail = [['usage', 'Computer usage', ALL], ['maintenance', 'Maintenance', TECH], ['inventory', 'Inventory', TECH], ['attendance', 'Attendance', ALL]].filter(r => r[2].includes(me.role));
+  const avail = [['usage', 'Computer usage', ALL], ['maintenance', 'Maintenance', TECH], ['inventory', 'Inventory', TECH], ['attendance', 'Attendance', TEACH]].filter(r => r[2].includes(me.role));
   const v = $('#view');
   v.innerHTML = `<form class="toolbar" id="flt">
       <label>Report<select name="report">${avail.map(r => `<option value="${r[0]}">${r[1]}</option>`).join('')}</select></label>

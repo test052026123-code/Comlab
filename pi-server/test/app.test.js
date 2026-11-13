@@ -128,3 +128,20 @@ test('extras: alerts, analytics, class attendance, import, password, backup', as
   assert.equal(head, 'SQLite format 3');
   assert.ok((await call('GET', '/api/kiosks', null, admin)).body.rows.length >= 1);
 });
+
+test('role limits: technician sees equipment only, instructor sees classes only', async () => {
+  const tech = (await call('POST', '/auth/login', { username: 'tech', password: 'tech-pass-1' })).body.token;
+  for (const p of ['/api/students', '/api/sections', '/api/classes', '/api/attendance', '/api/analytics', '/api/reports/attendance', '/api/users'])
+    assert.equal((await call('GET', p, null, tech)).status, 403, `technician must not read ${p}`);
+  for (const p of ['/api/issues', '/api/inventory', '/api/maintenance', '/api/workstations', '/api/reports/usage', '/api/my/issues'])
+    assert.equal((await call('GET', p, null, tech)).status, 200, `technician can read ${p}`);
+  const live = (await call('GET', '/workstations/live', null, tech)).body.workstations;
+  assert.ok(live.every(w => !w.session || w.session.studentName === undefined), 'no student names for technicians');
+  assert.equal((await call('GET', '/api/summary', null, tech)).body.attendanceToday, undefined);
+
+  const teach = (await call('POST', '/auth/login', { username: 'teach', password: 'new-pass-123' })).body.token;
+  for (const p of ['/api/issues', '/api/inventory', '/api/maintenance', '/api/reports/maintenance', '/api/my/issues'])
+    assert.equal((await call('GET', p, null, teach)).status, 403, `instructor must not read ${p}`);
+  for (const p of ['/api/students', '/api/classes', '/api/attendance', '/api/analytics', '/api/my/classes'])
+    assert.equal((await call('GET', p, null, teach)).status, 200, `instructor can read ${p}`);
+});

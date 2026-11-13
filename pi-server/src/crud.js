@@ -6,6 +6,8 @@ import { hashPassword, publicUser } from './auth.js';
 import { Fault, requireThat } from './errors.js';
 
 const STAFF = ['admin', 'technician', 'instructor'];
+// Role scopes: instructors handle classes/attendance, technicians handle equipment.
+const TEACH = ['admin', 'instructor'], TECH = ['admin', 'technician'];
 const text = (max = 200) => z.string().trim().min(1).max(max);
 const opt = (max = 1000) => z.string().trim().max(max).default('');
 const ref = z.string().min(1).max(64).nullable().default(null);
@@ -23,22 +25,22 @@ export const RESOURCES = {
     out: publicUser,
   },
   students: {
-    table: 'students', read: STAFF, write: ['admin'], idFrom: 'id',
+    table: 'students', read: TEACH, write: ['admin'], idFrom: 'id',
     schema: z.object({ id: z.string().regex(/^[A-Za-z0-9-]{3,32}$/), name: text(), sectionId: ref, fingerprintSlot: slot, active: bool.default(1) }),
     columns: { name: 'name', sectionId: 'section_id', fingerprintSlot: 'fingerprint_slot', active: 'active' },
   },
   sections: {
-    table: 'sections', read: STAFF, write: ['admin'],
+    table: 'sections', read: TEACH, write: ['admin'],
     schema: z.object({ name: text(60), program: opt(60), yearLevel: opt(20) }),
     columns: { name: 'name', program: 'program', yearLevel: 'year_level' },
   },
   subjects: {
-    table: 'subjects', read: STAFF, write: ['admin'],
+    table: 'subjects', read: TEACH, write: ['admin'],
     schema: z.object({ code: text(30), title: text() }),
     columns: { code: 'code', title: 'title' },
   },
   classes: {
-    table: 'classes', read: STAFF, write: ['admin'],
+    table: 'classes', read: TEACH, write: ['admin'],
     schema: z.object({ subjectId: z.string().min(1), sectionId: z.string().min(1), instructorId: ref,
       dayOfWeek: z.number().int().min(0).max(6), startTime: time, endTime: time })
       .refine(c => c.startTime < c.endTime, 'End time must be after start time.'),
@@ -58,7 +60,7 @@ export const RESOURCES = {
     columns: { assetTag: 'asset_tag', name: 'name', category: 'category', workstationId: 'workstation_id', condition: 'condition', serialNo: 'serial_no', location: 'location', notes: 'notes' },
   },
   issues: {
-    table: 'issues', read: STAFF, write: ['admin', 'technician'],
+    table: 'issues', read: TECH, write: ['admin', 'technician'],
     schema: z.object({ workstationId: ref, category: z.enum(['hardware', 'software', 'network', 'power', 'other']).default('other'), description: text(1000),
       status: z.enum(['open', 'in_progress', 'resolved']).default('open'), assignedTo: ref, resolution: opt() })
       .refine(i => i.status !== 'resolved' || i.resolution, 'Write a resolution before marking resolved.'),

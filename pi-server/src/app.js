@@ -57,7 +57,7 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerpri
   app.post('/kiosks/pair', roles('admin'), h(req => pairKiosk(db, z.object({ name: z.string().trim().min(1).max(60) }).parse(req.body).name)));
 
   // ---- kiosk / tablet flow -------------------------------------------------
-  app.get('/workstations/live', h(req => ({ workstations: lab.listWorkstations(db, { withNames: req.actor.role !== 'kiosk' }), at: lab.nowIso() })));
+  app.get('/workstations/live', h(req => ({ workstations: lab.listWorkstations(db, { names: ['admin', 'instructor'].includes(req.actor.role), notes: req.actor.role !== 'kiosk' }), at: lab.nowIso() })));
   app.get('/scans/:id', h(req => lab.identify(db, uuid.parse(req.params.id))));
   app.post('/scans/:id/staff-login', roles('kiosk'), h(req => {
     const s = lab.readScan(db, uuid.parse(req.params.id));
@@ -91,7 +91,7 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerpri
   app.delete('/api/fingerprint/slots/:slot', admin, h(req => fp().removeSlot(req.actor, z.coerce.number().int().min(0).max(999).parse(req.params.slot))));
 
   // ---- dashboard -----------------------------------------------------------
-  const staff = roles('admin', 'technician', 'instructor');
+  const staff = roles('admin', 'technician', 'instructor'), teach = roles('admin', 'instructor');
   for (const name of Object.keys(RESOURCES)) {
     const c = () => crud(db, name);
     app.get(`/api/${name}`, staff, h(req => ({ rows: c().list(req.actor) })));
@@ -106,11 +106,16 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerpri
       return r;
     }));
   }
-  app.get('/api/attendance', staff, h(req => ({ rows: attendance(db, req.query) })));
-  app.get('/api/attendance.csv', staff, (req, res, next) => {
+  app.get('/api/attendance', teach, h(req => ({ rows: attendance(db, req.query) })));
+  app.get('/api/attendance.csv', teach, (req, res, next) => {
     try { res.type('text/csv').attachment('attendance.csv').send('﻿' + toCsv(attendance(db, req.query))); } catch (e) { next(e); }
   });
-  app.get('/api/summary', staff, h(() => summary(db)));
+  app.get('/api/summary', staff, h(req => {
+    const s = summary(db);
+    if (req.actor.role === 'technician') { delete s.attendanceToday; delete s.activeSessions; }
+    if (req.actor.role === 'instructor') delete s.openIssues;
+    return s;
+  }));
   // Names only, for "assigned technician" / "instructor" dropdowns (no usernames or slots).
   app.get('/api/staff-directory', staff, h(() => ({ rows: db.prepare('SELECT id, name, role FROM users WHERE active = 1 ORDER BY name').all() })));
   // Reports: JSON for the dashboard, .xlsx for Excel, .csv for anything else.

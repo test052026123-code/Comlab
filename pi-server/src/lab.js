@@ -29,7 +29,8 @@ export function workstationStatus(pc, openSession, at = Date.now()) {
 }
 export const AVAILABLE = new Set(['IDLE', 'OFF']);
 
-export function listWorkstations(db, { withNames = true } = {}) {
+// names: who is on each PC (admin/instructor only); notes: internal maintenance notes (staff only).
+export function listWorkstations(db, { names = true, notes = true } = {}) {
   const open = new Map(db.prepare(`SELECT s.*, st.name student_name FROM sessions s JOIN students st ON st.id = s.student_id
     WHERE s.time_out IS NULL`).all().map(s => [s.workstation_id, s]));
   return db.prepare('SELECT * FROM workstations ORDER BY id').all().map(pc => {
@@ -40,8 +41,8 @@ export function listWorkstations(db, { withNames = true } = {}) {
       lastSeen: pc.last_seen, rssi: pc.rssi, ip: pc.ip,
       online: !!pc.last_seen && Date.now() - Date.parse(pc.last_seen) < NODE_STALE_MS,
       status: workstationStatus(pc, s),
-      ...(withNames ? { notes: pc.notes } : {}),
-      session: s ? { id: s.id, timeIn: s.time_in, ...(withNames ? { studentId: s.student_id, studentName: s.student_name } : {}) } : null,
+      ...(notes ? { notes: pc.notes } : {}),
+      session: s ? { id: s.id, timeIn: s.time_in, ...(names ? { studentId: s.student_id, studentName: s.student_name } : {}) } : null,
     };
   });
 }

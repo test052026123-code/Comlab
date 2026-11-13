@@ -60,5 +60,5 @@ export const REPORTS = {
   },
 };
 
-export const REPORT_ROLES = { attendance: ['admin', 'instructor', 'technician'], usage: ['admin', 'instructor', 'technician'],
+export const REPORT_ROLES = { attendance: ['admin', 'instructor'], usage: ['admin', 'instructor', 'technician'],
   maintenance: ['admin', 'technician'], inventory: ['admin', 'technician'] };

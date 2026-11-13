@@ -33,6 +33,15 @@ export function alerts(db) {
   return out.sort((a, b) => order[a.level] - order[b.level]);
 }
 
+// Each role only gets the alerts it acts on; technicians never see student names.
+export function alertsFor(db, role) {
+  const all = alerts(db);
+  if (role === 'admin') return all;
+  if (role === 'instructor') return all.filter(a => ['long_session', 'offline', 'maintenance'].includes(a.kind));
+  return all.filter(a => a.kind !== 'long_session')
+    .concat(all.filter(a => a.kind === 'long_session').map(a => ({ ...a, text: a.text.replace(/^.+? has been on/, 'A student has been on') })));
+}
+
 export function analytics(db, days = 14) {
   const today = dayKey(nowIso());
   const from = new Date(Date.parse(startOfDay(today)) - (days - 1) * 86400e3).toISOString();
@@ -93,16 +102,17 @@ export function myClassesToday(db, actor) {
 
 export function registerExtras(app, db, { h, roles, dbPath }) {
   const staff = roles('admin', 'technician', 'instructor'), admin = roles('admin');
-  app.get('/api/alerts', staff, h(() => ({ rows: alerts(db) })));
-  app.get('/api/analytics', staff, h(req => analytics(db, z.coerce.number().int().min(7).max(90).catch(14).parse(req.query.days))));
-  app.get('/api/my/classes', staff, h(req => ({ rows: myClassesToday(db, req.actor) })));
-  app.get('/api/my/issues', staff, h(req => ({ rows: db.prepare("SELECT * FROM issues WHERE assigned_to = ? AND status != 'resolved' ORDER BY created_at").all(req.actor.id)
+  const teach = roles('admin', 'instructor'), tech = roles('admin', 'technician');
+  app.get('/api/alerts', staff, h(req => ({ rows: alertsFor(db, req.actor.role) })));
+  app.get('/api/analytics', teach, h(req => analytics(db, z.coerce.number().int().min(7).max(90).catch(14).parse(req.query.days))));
+  app.get('/api/my/classes', teach, h(req => ({ rows: myClassesToday(db, req.actor) })));
+  app.get('/api/my/issues', tech, h(req => ({ rows: db.prepare("SELECT * FROM issues WHERE assigned_to = ? AND status != 'resolved' ORDER BY created_at").all(req.actor.id)
     .map(i => ({ id: i.id, workstationId: i.workstation_id, category: i.category, description: i.description, status: i.status, createdAt: i.created_at })) })));
-  app.get('/api/class-attendance', staff, h(req => {
+  app.get('/api/class-attendance', teach, h(req => {
     const q = z.object({ classId: z.string().min(1), date: z.iso.date() }).parse(req.query);
     return classAttendance(db, q.classId, q.date);
   }));
-  app.get('/api/issues/:id/history', staff, h(req => ({
+  app.get('/api/issues/:id/history', tech, h(req => ({
     rows: db.prepare(`SELECT m.created_at at, m.action, m.remarks, u.name technician FROM maintenance_logs m LEFT JOIN users u ON u.id = m.technician_id
       WHERE m.issue_id = ? ORDER BY m.created_at`).all(req.params.id),
     audit: db.prepare("SELECT at, actor, action FROM audit WHERE target = ? ORDER BY id").all(req.params.id),
