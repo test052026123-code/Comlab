@@ -14,7 +14,7 @@ export async function login(email:string,password:string) {
   if (!r.ok) throw Error('Sign-in failed. Check your administrator email and password.');
   if(epoch!==generation) throw Error('Sign-in cancelled.');
   session={idToken:data.idToken,refreshToken:data.refreshToken,expires:Date.now()+Number(data.expiresIn)*1000,email:data.email};
-  try { const me=await api('/me'); if(me.role!=='admin') throw Error('This account is not an approved ComLab administrator.'); }
+  try { const me=await api('/me'); if(me.role!=='admin') throw Error('This account is not an approved ComLab staff account.'); }
   catch(e) { logout(); throw e; }
   return data.email as string;
 }

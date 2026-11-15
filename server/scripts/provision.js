@@ -3,7 +3,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'node:crypto';
 const [role, uid] = process.argv.slice(2);
-if (!['admin', 'kiosk', 'revoke'].includes(role) || !/^[a-zA-Z0-9_-]{1,128}$/.test(uid || '')) throw new Error('Usage: npm run provision -- admin|kiosk|revoke EXISTING_FIREBASE_AUTH_UID');
+if (!['admin', 'instructor', 'technician', 'kiosk', 'revoke'].includes(role) || !/^[a-zA-Z0-9_-]{1,128}$/.test(uid || '')) throw new Error('Usage: npm run provision -- admin|instructor|technician|kiosk|revoke EXISTING_FIREBASE_AUTH_UID');
 initializeApp({ credential: applicationDefault() });
 const auth = getAuth(), db = getFirestore();
 const user = await auth.getUser(uid);

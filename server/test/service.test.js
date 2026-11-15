@@ -208,6 +208,9 @@ test('unapproved, disabled and missing users cannot receive kiosk or admin acces
   assert.equal(approvedRole({enabled:true,role:'unknown'},{approved:true}),null);
   assert.equal(approvedRole({enabled:true,role:'kiosk'},{approved:true}),'kiosk');
   assert.equal(approvedRole({enabled:true,role:'admin'},null),'admin');
+  assert.equal(approvedRole({enabled:true,role:'instructor'},null),'admin');
+  assert.equal(approvedRole({enabled:true,role:'technician'},null),'admin');
+  assert.equal(approvedRole({enabled:false,role:'technician'},null),null);
 });
 test('two PC editors cannot map the same node and active mapping cannot change',async()=>{
   const {lab,db}=fixture(); const admin={uid:'staff',role:'admin'};

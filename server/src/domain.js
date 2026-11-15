@@ -3,7 +3,8 @@ export class Fault extends Error {
 }
 export function approvedRole(user, kiosk) {
   if (user?.enabled !== true) return null;
-  if (user.role === 'admin') return 'admin';
+  // Instructors and technicians share the full administrator dashboard and permissions.
+  if (['admin', 'instructor', 'technician'].includes(user.role)) return 'admin';
   return user.role === 'kiosk' && kiosk?.approved === true ? 'kiosk' : null;
 }
 export function requireThat(ok, message, status = 409) {
