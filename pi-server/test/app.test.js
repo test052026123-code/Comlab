@@ -145,3 +145,23 @@ test('role limits: technician sees equipment only, instructor sees classes only'
   for (const p of ['/api/students', '/api/classes', '/api/attendance', '/api/analytics', '/api/my/classes'])
     assert.equal((await call('GET', p, null, teach)).status, 200, `instructor can read ${p}`);
 });
+
+test('nodes: power-on command rides the heartbeat; failures raise automatic reports', async () => {
+  await call('POST', '/api/workstations', { id: 'PC-09', label: 'PC 9', nodeId: 'node-9' }, admin);
+  const off = await beat('node-9', 'off');
+  assert.ok(off.body.serverTimeMs > 1700000000000); assert.equal(off.body.command, undefined);
+  const tech = (await call('POST', '/auth/login', { username: 'tech', password: 'tech-pass-1' })).body.token;
+  const { commandId } = (await call('POST', '/api/workstations/PC-09/power-on', null, tech)).body;
+  const cmd = (await beat('node-9', 'off')).body.command;
+  assert.equal(cmd.commandId, commandId); assert.equal(cmd.action, 'power_on'); assert.equal(cmd.workstationId, 'PC-09');
+  assert.equal(Object.keys(cmd).length, 6, 'node firmware requires exactly 6 fields');
+  // Node reports the pulse failed -> automatic report for the technician.
+  const r = await call('POST', '/node/heartbeat', { nodeId: 'node-9', power: 'off', powerResult: { commandId, state: 'unknown' } }, null, { 'x-node-key': 'k' });
+  assert.equal(r.body.command, undefined);
+  const auto = (await call('GET', '/api/issues', null, tech)).body.rows.filter(i => i.workstationId === 'PC-09');
+  assert.equal(auto.length, 1); assert.match(auto[0].description, /did not power on/);
+  // Successful power-on clears the command without a report.
+  await call('POST', '/api/workstations/PC-09/power-on', null, tech);
+  assert.equal((await beat('node-9', 'on')).body.command, undefined);
+  assert.equal((await call('GET', '/api/issues', null, tech)).body.rows.filter(i => i.workstationId === 'PC-09').length, 1);
+});

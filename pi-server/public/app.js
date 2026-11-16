@@ -212,8 +212,8 @@ const RES = {
   },
   classes: {
     title: 'Class schedule', write: ADMIN,
-    fields: [['subjectId', 'Subject', 'ref:subjects'], ['sectionId', 'Section', 'ref:sections'], ['instructorId', 'Instructor', 'ref:staff'],
-      ['dayOfWeek', 'Day', 'day'], ['startTime', 'Start', 'time'], ['endTime', 'End', 'time']],
+    fields: [['subjectId', 'Subject', 'ref:subjects', { required: true }], ['sectionId', 'Section', 'ref:sections', { required: true }], ['instructorId', 'Instructor', 'ref:staff'],
+      ['dayOfWeek', 'Day', 'day'], ['startTime', 'Start', 'time', { default: '08:00' }], ['endTime', 'End', 'time', { default: '09:00' }]],
     cols: [['subjectId', 'Subject', 'ref:subjects'], ['sectionId', 'Section', 'ref:sections'], ['instructorId', 'Instructor', 'ref:staff'],
       ['dayOfWeek', 'Day', r => DAYS[r.dayOfWeek]], ['startTime', 'Time', r => `${r.startTime}–${r.endTime}`]],
     sort: (a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime),
@@ -322,7 +322,7 @@ async function editForm(name, row, onSaved, forceCreate = false) {
     if (type === 'day') return `<label>${lbl}<select name="${k}">${DAYS.map((d, i) => `<option value="${i}" ${i === v ? 'selected' : ''}>${d}</option>`).join('')}</select></label>`;
     if (type.startsWith('ref:')) {
       const L = type.slice(4), items = await lookup(L).catch(() => []);
-      return `<label>${lbl}<select name="${k}"><option value="">— None —</option>${items.map(i => `<option value="${esc(i.id)}" ${i.id === v ? 'selected' : ''}>${esc(refName(L, i))}</option>`).join('')}</select></label>`;
+      return `<label>${lbl}<select name="${k}">${opt?.required ? (items.length ? '' : '<option value="">— Add one first —</option>') : '<option value="">— None —</option>'}${items.map(i => `<option value="${esc(i.id)}" ${i.id === v ? 'selected' : ''}>${esc(refName(L, i))}</option>`).join('')}</select></label>`;
     }
     const t = { password: 'password', time: 'time', number: 'number' }[type] ?? 'text';
     return `<label>${lbl}<input name="${k}" type="${t}" value="${type === 'password' ? '' : esc(v)}" ${opt?.key && !isNew ? 'readonly' : ''} placeholder="${esc(opt?.placeholder ?? '')}"></label>`;

@@ -12,7 +12,8 @@ const text = (max = 200) => z.string().trim().min(1).max(max);
 const opt = (max = 1000) => z.string().trim().max(max).default('');
 const ref = z.string().min(1).max(64).nullable().default(null);
 const slot = z.number().int().min(1).max(300).nullable().default(null);   // AS608 holds up to 300 templates
-const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM');
+const time = z.string({ error: 'Pick a time.' }).regex(/^([01]\d|2[0-3]):[0-5]\d/, 'Pick a time (HH:MM).').transform(t => t.slice(0, 5));
+const need = what => z.string({ error: `Choose a ${what}.` }).min(1, `Choose a ${what}.`);
 const bool = z.boolean().transform(b => (b ? 1 : 0));
 
 // columns: API field -> db column. schema validates API fields.
@@ -41,7 +42,7 @@ export const RESOURCES = {
   },
   classes: {
     table: 'classes', read: TEACH, write: ['admin'],
-    schema: z.object({ subjectId: z.string().min(1), sectionId: z.string().min(1), instructorId: ref,
+    schema: z.object({ subjectId: need('subject'), sectionId: need('section'), instructorId: ref,
       dayOfWeek: z.number().int().min(0).max(6), startTime: time, endTime: time })
       .refine(c => c.startTime < c.endTime, 'End time must be after start time.'),
     columns: { subjectId: 'subject_id', sectionId: 'section_id', instructorId: 'instructor_id', dayOfWeek: 'day_of_week', startTime: 'start_time', endTime: 'end_time' },

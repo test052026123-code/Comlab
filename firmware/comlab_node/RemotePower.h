@@ -11,6 +11,7 @@ static const uint32_t MAGIC = 0x434C5031;
 struct Record { uint32_t magic; char id[37]; int64_t issuedAtMs; uint8_t state; };
 static Record last = {};
 static bool ready = false, inFlight = false;
+static bool offCmd = false;  // last command was power_off (press to shut down a running PC)
 static int64_t expiresAtMs = 0;
 static uint32_t startedMs = 0;
 static int64_t nowMs() {
@@ -18,7 +19,10 @@ static int64_t nowMs() {
   gettimeofday(&now, nullptr);
   return static_cast<int64_t>(now.tv_sec) * 1000 + now.tv_usec / 1000;
 }
+// ConfirmedOn means the PC reached the commanded state.
+static const char* stateName() { return offCmd ? "confirmed_off" : "confirmed_on"; }
 static bool save() {
+  journal.putUChar("act", offCmd ? 1 : 0);
   if (journal.putBytes("last", &last, sizeof(last)) == sizeof(last)) return true;
   ready = false;
   Serial.println("[Power command] NVS write failed; power commands disabled.");
@@ -27,7 +31,7 @@ static bool save() {
 static bool guard() {
   // Called by the relay timer: no storage, logging or networking here.
   return ready && inFlight && COMLAB_NODE_POWER_SENSE &&
-    digitalRead(PowerSense::PIN) == HIGH &&
+    digitalRead(PowerSense::PIN) == (offCmd ? LOW : HIGH) &&
     PowerPolicy::validTime(nowMs(), last.issuedAtMs, expiresAtMs);
 }
 // Local operator recovery after independently checking that the PC is OFF.
@@ -73,6 +77,7 @@ static void begin() {
       return;
     }
     // A reboot cannot establish whether a pulse occurred. Never replay it.
+    offCmd = journal.getUChar("act", 0) == 1;
     if (last.state == PowerPolicy::Accepted) { last.state = PowerPolicy::Unknown; save(); }
   }
   Serial.println("[Power command] Node power-on executor v1 ready; sensor feedback required. Reset GPIO22 reserved, inactive.");
@@ -80,7 +85,7 @@ static void begin() {
 }
 static void accept(JsonObjectConst command) {
   if (!ready || command.isNull() || command.size() != 6 ||
-      command["action"].as<String>() != "power_on" ||
+      (command["action"].as<String>() != "power_on" && command["action"].as<String>() != "power_off") ||
       command["nodeId"].as<String>() != COMLAB_NODE_ID ||
       command["workstationId"].as<String>() != COMLAB_WORKSTATION_ID ||
       !command["issuedAtMs"].is<int64_t>() || !command["expiresAtMs"].is<int64_t>()) return;
@@ -93,27 +98,31 @@ static void accept(JsonObjectConst command) {
   // Unknown past delivery blocks any new pulse, even across reboot. Do not
   // overwrite its identity with a new command's rejection.
   if (last.magic && last.state == PowerPolicy::Unknown) return;
+  const bool off = command["action"].as<String>() == "power_off";
+  // power_on presses only while the PC is OFF; power_off only while it is ON.
   const bool allowed = PowerPolicy::canStart(COMLAB_NODE_POWER_SENSE,
-    strcmp(PowerSense::state(), "off") == 0,
-    COMLAB_NODE_POWER_SENSE && digitalRead(PowerSense::PIN) == HIGH,
+    strcmp(PowerSense::state(), off ? "on" : "off") == 0,
+    COMLAB_NODE_POWER_SENSE && digitalRead(PowerSense::PIN) == (off ? LOW : HIGH),
     RemoteBench::inFlight || !RelayBench::ready, false);
+  offCmd = off;
   last = {}; last.magic = MAGIC; id.toCharArray(last.id, sizeof(last.id)); last.issuedAtMs = issued;
   last.state = allowed ? PowerPolicy::Accepted : PowerPolicy::Rejected;
   if (!save() || !allowed) return;
   expiresAtMs = expiry; startedMs = millis(); inFlight = true;
   if (!RelayBench::remotePulse(true)) {
     inFlight = false; last.state = PowerPolicy::Rejected; save();
-  } else Serial.println("[Power command] Authenticated power-on queued; one guarded 300ms pulse.");
+  } else Serial.printf("[Power command] Authenticated %s queued; one guarded 300ms pulse.\n", off ? "power-off" : "power-on");
 }
 static void poll() {
   if (!inFlight) return;
   const auto state = PowerPolicy::completion(RelayBench::remoteStatus(),
-    strcmp(PowerSense::state(), "on") == 0, millis() - startedMs >= 20000);
+    strcmp(PowerSense::state(), offCmd ? "off" : "on") == 0,
+    millis() - startedMs >= (offCmd ? 150000UL : 20000UL));  // Windows needs time to shut down
   if (state == PowerPolicy::Accepted) return;
   inFlight = false; last.state = state;
   if (!save()) last.state = PowerPolicy::Unknown;
   Serial.printf("[Power command] Result: %s. No automatic pulse retry.\n",
-    last.state == PowerPolicy::ConfirmedOn ? "confirmed_on" : last.state == PowerPolicy::Rejected ? "rejected" : "unknown");
+    last.state == PowerPolicy::ConfirmedOn ? stateName() : last.state == PowerPolicy::Rejected ? "rejected" : "unknown");
 }
 static void addReport(JsonDocument& body) {
   body["powerReady"] = ready && RelayBench::ready && COMLAB_NODE_POWER_SENSE &&
@@ -121,7 +130,7 @@ static void addReport(JsonDocument& body) {
   if (!last.magic) return;
   JsonObject result = body["powerResult"].to<JsonObject>();
   result["commandId"] = last.id; result["issuedAtMs"] = last.issuedAtMs;
-  result["state"] = last.state == PowerPolicy::ConfirmedOn ? "confirmed_on" :
+  result["state"] = last.state == PowerPolicy::ConfirmedOn ? stateName() :
     last.state == PowerPolicy::Rejected ? "rejected" : last.state == PowerPolicy::Accepted ? "accepted" : "unknown";
 }
 }

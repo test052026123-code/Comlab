@@ -24,6 +24,9 @@ static State completion(int relayStatus, bool observedOn, bool deadlinePassed) {
   if (relayStatus == 5) return Rejected;
   if (relayStatus == 4) return Unknown;
   if (relayStatus == 3 && observedOn) return ConfirmedOn;
-  return deadlinePassed ? Unknown : Accepted;
+  if (!deadlinePassed) return Accepted;
+  // Pulse finished and the sensor still reads OFF: the PC failed to start.
+  // That is a known outcome (the Pi raises a report), so do not lock the node.
+  return relayStatus == 3 ? Rejected : Unknown;
 }
 }

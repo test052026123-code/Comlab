@@ -1,14 +1,17 @@
 /*
- * ComLab workstation node: authenticated Wi-Fi, guarded power-on and bench tests.
- * ESP32-WROOM DevKit V1, Arduino ESP32 3.3.7, ArduinoJson 7.
- * Manual 300ms relay pulse on GPIO23 through the confirmed 2N2222A interface.
- * Production power-on requires sensor feedback and the matching controller bridge.
- * Requires the updated comlab_cloud controller with the matching local node key.
+ * ComLab workstation node v2: reports to the Raspberry Pi server over the lab LAN.
+ * ESP32-WROOM DevKit V1, Arduino ESP32 3.3.x, ArduinoJson 7.
+ *
+ * Every 3 s: POST <COMLAB_SERVER_URL>/node/heartbeat  (header x-node-key)
+ *   { nodeId, power: on|off|unknown, rssi, ip, powerResult? }
+ * Reply: { ok, serverTimeMs, command? }. The node sets its clock from serverTimeMs
+ * (the lab has no internet, so no NTP), and power_on / power_off commands are executed by
+ * RemotePower: one guarded 300 ms pulse on GPIO23, only while the sensor reads OFF (power_on) or ON (power_off: Windows shuts down).
+ * The Pi decides when something is wrong (PC did not start, PC switched off mid-session).
  */
 #include <WiFi.h>
-#include <WiFiUdp.h>
-#include <ESPmDNS.h>
-#include <esp_system.h>
+#include <HTTPClient.h>
+#include <sys/time.h>
 #include <time.h>
 #include "NodeAuth.h"
 #include "RelayBench.h"
@@ -21,72 +24,56 @@
 #include "PowerSense.h"
 #include "RemotePower.h"
 
-static WiFiUDP nodeUdp;
-static IPAddress controllerIp;
-static String nodeBootId;
-static uint32_t sequence = 0, nextReportMs = 0, nextWifiMs = 0, lastAckMs = 0, lastDiscoveryMs = 0;
-static bool configured = false, networkStarted = false;
-static bool centralPowerProtocol = false;
+static const uint32_t REPORT_EVERY_MS = 3000;
+static uint32_t nextReportMs = 0, nextWifiMs = 0, failures = 0;
+static bool configured = false, wasConnected = false;
 
-static String makeNodeBootId() {
-  char value[33];
-  for (size_t i = 0; i < 4; ++i) snprintf(value + i * 8, 9, "%08lx", static_cast<unsigned long>(esp_random()));
-  return String(value);
-}
-
-static void receiveAcknowledgements() {
-  for (int count = 0; count < 8; ++count) {
-    const int length = nodeUdp.parsePacket();
-    if (length <= 0) return;
-    if (length > static_cast<int>(NODE_PACKET_LIMIT) || nodeUdp.remoteIP() != controllerIp || nodeUdp.remotePort() != NODE_CONTROLLER_PORT) {
-      while (nodeUdp.available()) nodeUdp.read();
-      continue;
-    }
-    char packet[NODE_PACKET_LIMIT + 1];
-    const int received = nodeUdp.read(packet, length);
-    if (received != length) continue;
-    packet[received] = 0;
-    JsonDocument envelope, body;
-    if (deserializeJson(envelope, packet)) continue;
-    const String raw = envelope["body"] | "";
-    if (!nodeVerify(COMLAB_NODE_KEY, NODE_REPLY_DOMAIN, raw, envelope["signature"] | "") || deserializeJson(body, raw)) continue;
-    if (body["protocolVersion"] != 1 || body["nodeId"].as<String>() != COMLAB_NODE_ID ||
-        body["bootId"].as<String>() != nodeBootId || body["ackSequence"].as<uint32_t>() != sequence) continue;
-    lastAckMs = millis();
-    centralPowerProtocol = body["powerSupported"] == true;
-    if (!RemotePower::inFlight) RemoteBench::accept(body["benchCommand"].as<JsonObjectConst>());
-    RemotePower::accept(body["powerCommand"].as<JsonObjectConst>());
-    Serial.printf("[Node %s / %s] Controller acknowledged heartbeat. PC power: %s. Power-on executor v1.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID, PowerSense::state());
-  }
+static void setClock(int64_t ms) {
+  if (ms < 1700000000000LL) return;
+  struct timeval tv = { static_cast<time_t>(ms / 1000), static_cast<suseconds_t>((ms % 1000) * 1000) };
+  settimeofday(&tv, nullptr);
 }
 
 static void reportHeartbeat() {
-  if (controllerIp == IPAddress() || (millis() - lastAckMs > 15000 && millis() - lastDiscoveryMs > 15000)) {
-    lastDiscoveryMs = millis();
-    controllerIp = MDNS.queryHost(COMLAB_CONTROLLER_HOST, 800);
-    if (controllerIp == IPAddress()) {
-      Serial.println("[Node] Controller not discovered. Upload the updated controller and check router client isolation/mDNS.");
-      return;
-    }
-  }
-  ++sequence;
-  if (sequence == 0) { nodeBootId = makeNodeBootId(); sequence = 1; }
   JsonDocument body;
-  body["protocolVersion"] = 1; body["nodeId"] = COMLAB_NODE_ID;
-  body["workstationId"] = COMLAB_WORKSTATION_ID; body["bootId"] = nodeBootId;
-  body["sequence"] = sequence; body["uptimeMs"] = millis();
-  body["sampledAtMs"] = static_cast<int64_t>(time(nullptr)) * 1000;
-  body["power"] = PowerSense::state(); body["reachability"] = "unknown"; body["input"] = "unknown";
-  RemoteBench::addReport(body);
-  // Negotiate the extension so older controllers keep accepting heartbeats
-  // while the boards are updated one at a time.
-  if (centralPowerProtocol) RemotePower::addReport(body);
+  body["nodeId"] = COMLAB_NODE_ID;
+  body["power"] = PowerSense::state();
+  body["rssi"] = WiFi.RSSI();
+  body["ip"] = WiFi.localIP().toString();
+  if (RemotePower::last.magic) {
+    JsonObject r = body["powerResult"].to<JsonObject>();
+    r["commandId"] = RemotePower::last.id;
+    const uint8_t s = RemotePower::last.state;
+    r["state"] = s == PowerPolicy::ConfirmedOn ? RemotePower::stateName() : s == PowerPolicy::Rejected ? "rejected" :
+                 s == PowerPolicy::Accepted ? "accepted" : "unknown";
+  }
   String raw; serializeJson(body, raw);
-  const String packet = nodePacket(COMLAB_NODE_KEY, NODE_REPORT_DOMAIN, raw);
-  if (packet.isEmpty()) return;
-  if (nodeUdp.beginPacket(controllerIp, NODE_CONTROLLER_PORT)) {
-    nodeUdp.write(reinterpret_cast<const uint8_t*>(packet.c_str()), packet.length());
-    nodeUdp.endPacket();
+
+  HTTPClient http;
+  http.setConnectTimeout(2000); http.setTimeout(2500);
+  if (!http.begin(String(COMLAB_SERVER_URL) + "/node/heartbeat")) return;
+  http.addHeader("content-type", "application/json");
+  http.addHeader("x-node-key", COMLAB_NODE_KEY);
+  const int code = http.POST(raw);
+  const String reply = code > 0 ? http.getString() : String();
+  http.end();
+
+  if (code != 200) {
+    ++failures;
+    if (code == 401) Serial.println("[Node] Pi rejected the node key. Check COMLAB_NODE_KEY in secrets.h.");
+    else if (code == 404) Serial.printf("[Node] Pi does not know %s. Set it as the ESP32 node ID of a workstation in the dashboard.\n", COMLAB_NODE_ID);
+    else if (failures % 5 == 1) Serial.printf("[Node] Pi not reachable at %s (code %d).\n", COMLAB_SERVER_URL, code);
+    return;
+  }
+  if (failures) Serial.println("[Node] Connected to the Pi server.");
+  failures = 0;
+  JsonDocument doc;
+  if (deserializeJson(doc, reply)) return;
+  setClock(doc["serverTimeMs"] | 0LL);
+  JsonObjectConst cmd = doc["command"].as<JsonObjectConst>();
+  if (!cmd.isNull()) {
+    Serial.printf("[Node] %s command %s received.\n", cmd["action"].as<const char*>(), cmd["commandId"].as<const char*>());
+    RemotePower::accept(cmd);
   }
 }
 
@@ -95,47 +82,34 @@ void setup() {
   RelayBench::begin();
   RemoteBench::begin();
   PowerSense::begin();
-  // Reset channel stays released; this update implements power-on only.
-  digitalWrite(22, LOW); pinMode(22, OUTPUT);
+  digitalWrite(22, LOW); pinMode(22, OUTPUT);  // reset channel reserved, inactive
   RemotePower::begin();
-  configured = strlen(COMLAB_NODE_WIFI_SSID) > 0 && nodeHex(String(COMLAB_NODE_KEY), 64) &&
-    String(COMLAB_NODE_ID).length() > 0 && String(COMLAB_WORKSTATION_ID).length() > 0;
-  if (!configured) {
-    Serial.println("[Node] Run server/scripts/configure-node.js for this PC. Local secrets.h is missing or incomplete.");
-    return;
-  }
-  nodeBootId = makeNodeBootId();
+  configured = strlen(COMLAB_NODE_WIFI_SSID) > 0 && strlen(COMLAB_NODE_KEY) >= 16 &&
+    strlen(COMLAB_NODE_ID) > 0 && strlen(COMLAB_SERVER_URL) > 7;
+  if (!configured) { Serial.println("[Node] secrets.h is missing or incomplete (Wi-Fi, node ID, node key, server URL)."); return; }
   WiFi.mode(WIFI_STA);
   String hostname = String("comlab-") + COMLAB_NODE_ID; hostname.toLowerCase();
   WiFi.setHostname(hostname.c_str()); WiFi.setAutoReconnect(true);
   WiFi.begin(COMLAB_NODE_WIFI_SSID, COMLAB_NODE_WIFI_PASSWORD);
   nextWifiMs = millis() + 10000;
-  configTime(0, 0, "pool.ntp.org", "time.google.com");
-  Serial.printf("[Node] Starting %s / %s. Waiting for Wi-Fi and synchronized time. Node power-on executor v1; matching controller update required.\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID);
+  Serial.printf("[Node] v2 starting %s / %s -> %s\n", COMLAB_NODE_ID, COMLAB_WORKSTATION_ID, COMLAB_SERVER_URL);
 }
 
 void loop() {
-  RelayBench::poll(); // OFF remains available; ARM/TEST respect the power lock.
+  RelayBench::poll();
   RemoteBench::poll();
   PowerSense::poll();
   RemotePower::poll();
   if (!configured) { delay(100); return; }
   const uint32_t now = millis();
   if (WiFi.status() != WL_CONNECTED) {
-    if (networkStarted) { nodeUdp.stop(); MDNS.end(); networkStarted = false; controllerIp = IPAddress(); }
+    if (wasConnected) { Serial.println("[Node] Wi-Fi lost."); wasConnected = false; }
     if (static_cast<int32_t>(now - nextWifiMs) >= 0) { WiFi.reconnect(); nextWifiMs = now + 10000; }
     delay(10); return;
   }
-  if (time(nullptr) < 1700000000) { delay(20); return; }
-  if (!networkStarted) {
-    String hostname = String("comlab-") + COMLAB_NODE_ID; hostname.toLowerCase();
-    if (!MDNS.begin(hostname.c_str()) || !nodeUdp.begin(NODE_CLIENT_PORT)) { delay(1000); return; }
-    networkStarted = true;
-    Serial.printf("[Node] Wi-Fi ready. IP: %s\n", WiFi.localIP().toString().c_str());
-  }
-  receiveAcknowledgements();
+  if (!wasConnected) { wasConnected = true; Serial.printf("[Node] Wi-Fi ready. IP: %s\n", WiFi.localIP().toString().c_str()); }
   if (static_cast<int32_t>(now - nextReportMs) >= 0) {
-    reportHeartbeat(); nextReportMs = millis() + 3000;
+    reportHeartbeat(); nextReportMs = millis() + REPORT_EVERY_MS;
   }
   delay(2);
 }

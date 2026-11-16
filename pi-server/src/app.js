@@ -9,12 +9,14 @@ import * as lab from './lab.js';
 import { REPORTS, REPORT_ROLES } from './reports.js';
 import { toXlsx } from './xlsx.js';
 import { registerExtras } from './extras.js';
+import { createNodeHub } from './nodes.js';
 
 const uuid = z.string().uuid();
 const wsId = z.string().regex(/^[A-Z0-9-]{2,16}$/);
 
 export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerprints = null } = {}) {
   const app = express();
+  const nodes = createNodeHub(db);
   app.disable('x-powered-by');
   // Plain HTTP on the lab LAN: do not tell browsers to upgrade to HTTPS.
   // COOP and Origin-Agent-Cluster only work over HTTPS; on the LAN they just print browser warnings.
@@ -46,9 +48,11 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerpri
   // ---- ESP32 nodes (shared device key; MQTT bridge uses the same handler) ---
   app.post('/node/heartbeat', h(req => {
     requireThat(nodeKey && req.headers['x-node-key'] === nodeKey, 'Bad node key.', 401);
-    lab.heartbeat(db, z.object({ nodeId: z.string().max(48), power: z.enum(['on', 'off', 'unknown']), rssi: z.number().int().optional(),
-      ip: z.string().max(45).optional() }).parse(req.body));
-    return { ok: true };
+    const beat = z.object({ nodeId: z.string().max(48), power: z.enum(['on', 'off', 'unknown']), rssi: z.number().int().optional(),
+      ip: z.string().max(45).optional(),
+      powerResult: z.object({ commandId: z.string().max(40), state: z.string().max(20) }).partial().optional() }).parse(req.body);
+    lab.heartbeat(db, beat);
+    return { ok: true, serverTimeMs: Date.now(), ...nodes.onHeartbeat(beat.nodeId, beat) };
   }));
 
   // ---- everything below requires a token -----------------------------------
@@ -66,10 +70,25 @@ export function createApp(db, { nodeKey = process.env.COMLAB_NODE_KEY, fingerpri
     db.prepare('UPDATE scans SET used = 1 WHERE id = ?').run(s.id);
     return loginWithScan(db, db.prepare('SELECT * FROM users WHERE id = ?').get(s.person_id));
   }));
-  app.post('/checkin', roles('kiosk'), h(req => lab.checkIn(db, req.actor,
-    z.object({ scanId: uuid, workstationId: wsId.optional() }).strict().parse(req.body))));
-  app.post('/sessions/:id/end', h(req => lab.endSession(db, req.actor, uuid.parse(req.params.id),
-    z.object({ scanId: uuid.optional(), reason: z.string().max(300).optional() }).parse(req.body))));
+  app.post('/checkin', roles('kiosk'), h(req => {
+    const r = lab.checkIn(db, req.actor, z.object({ scanId: uuid, workstationId: wsId.optional() }).strict().parse(req.body));
+    if (r.powerOnRequired) r.powerCommand = nodes.requestPowerOn(r.workstationId);
+    return r;
+  }));
+  // Staff: press a PC's power button remotely.
+  app.post('/api/workstations/:id/power-on', roles('admin', 'technician'), h(req => {
+    const id = nodes.requestPowerOn(wsId.parse(req.params.id));
+    requireThat(id, 'This workstation has no ESP32 node linked.', 400);
+    lab.audit(db, req.actor, 'workstation.power_on', req.params.id);
+    return { commandId: id };
+  }));
+  // Checkout: end the session, then have the node press the power button so Windows shuts down.
+  app.post('/sessions/:id/end', h(req => {
+    const r = lab.endSession(db, req.actor, uuid.parse(req.params.id),
+      z.object({ scanId: uuid.optional(), reason: z.string().max(300).optional() }).parse(req.body));
+    if (r.ended && r.workstationId) r.powerCommand = nodes.requestPowerOff(r.workstationId);
+    return r;
+  }));
   app.post('/issues/report', h(req => lab.reportIssue(db, req.actor, z.object({
     scanId: uuid.optional(), sessionId: uuid.optional(), workstationId: wsId.optional(),
     category: z.enum(['hardware', 'software', 'network', 'power', 'other']).optional(),

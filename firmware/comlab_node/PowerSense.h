@@ -12,7 +12,10 @@
 #endif
 
 namespace PowerSense {
-constexpr uint8_t PIN = 33;
+#ifndef COMLAB_NODE_POWER_SENSE_PIN
+#define COMLAB_NODE_POWER_SENSE_PIN 33
+#endif
+constexpr uint8_t PIN = COMLAB_NODE_POWER_SENSE_PIN;
 constexpr uint32_t STABLE_MS = 300;
 static int stableLevel = -1, lastLevel = -1;
 static uint32_t changedMs = 0;

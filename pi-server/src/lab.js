@@ -139,7 +139,7 @@ export function endSession(db, actor, sessionId, { scanId, reason } = {}) {
   return tx(db, () => {
     const s = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
     requireThat(s, 'Session not found.', 404);
-    if (s.time_out) return { sessionId, alreadyEnded: true };
+    if (s.time_out) return { sessionId, workstationId: s.workstation_id, alreadyEnded: true };
     let endReason;
     if (actor.role === 'kiosk') {
       const scan = readScan(db, scanId);
@@ -155,7 +155,7 @@ export function endSession(db, actor, sessionId, { scanId, reason } = {}) {
       .run(nowIso(), endReason, `${actor.role}:${actor.id}`, sessionId);
     audit(db, actor, 'session.end', sessionId, { reason: endReason });
     recordChange(db, 'sessions', sessionId, 'upsert');
-    return { sessionId, ended: true };
+    return { sessionId, workstationId: s.workstation_id, ended: true };
   });
 }
 
